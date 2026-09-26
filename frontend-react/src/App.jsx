@@ -174,52 +174,11 @@ export default function App() {
             </div>
             <div className="brand-text">
               <span className="brand-name">MediQueue</span>
-              <span className="brand-dept-tag">FIREBASE REAL-TIME CLOUD OPD</span>
+              <span className="brand-dept-tag">SMART OPD HEALTHCARE</span>
             </div>
           </div>
 
           <div className="nav-utility-bar">
-            {/* Direct Portal Selection Hub button */}
-            {currentView !== 'landing' && (
-              <button
-                type="button"
-                className="btn-demo-scenario"
-                onClick={() => navigateTo('landing')}
-                title="Return to Portal Selection Hub"
-              >
-                <i className="fa-solid fa-table-cells-large"></i>
-                <span>Portal Hub</span>
-              </button>
-            )}
-
-            {/* Doctor Onboarding Action */}
-            <button
-              type="button"
-              className="btn-demo-scenario"
-              onClick={() => setShowDocRegModal(true)}
-              title="Onboard a new clinician to Firestore"
-            >
-              <i className="fa-solid fa-user-plus"></i>
-              <span>Doctor Onboarding</span>
-            </button>
-
-            {/* Purge / Reset to Zero */}
-            <button
-              type="button"
-              className="btn-demo-scenario"
-              onClick={async () => {
-                if (window.confirm('Reset all Firestore collections (doctors, appointments, analytics_logs) to zero?')) {
-                  await purgeAllData();
-                  showToast('Firestore purged. All collections reset.');
-                }
-              }}
-              title="Reset Firestore collections"
-              style={{ color: '#EF4444', borderColor: '#FCA5A5' }}
-            >
-              <i className="fa-solid fa-trash-can"></i>
-              <span>Purge Data</span>
-            </button>
-
             {/* User Session Chip */}
             {currentUser && (
               <div className="auth-session-chip">
@@ -248,9 +207,6 @@ export default function App() {
         <main className="page-viewport">
           <div className="landing-auth-container" style={{ maxWidth: '1080px', margin: '0 auto' }}>
             <div className="landing-hero-center">
-              <span className="hero-kicker font-mono">
-                <i className="fa-solid fa-fire text-amber"></i> FIREBASE REAL-TIME CLOUD OPD ARCHITECTURE
-              </span>
               <h1 className="hero-title">Select Your MediQueue Portal</h1>
               <p className="hero-desc">
                 Decoupled role-based access for Patients, Doctors, and Hospital Administration with instant Cloud Firestore synchronization.

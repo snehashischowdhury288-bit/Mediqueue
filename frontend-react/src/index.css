@@ -3252,3 +3252,473 @@ input, select, textarea {
   }
 }
 
+/* ==========================================================================
+   DOCTOR PORTAL: 5-SLOT BATCH GRID & CLINICAL SUITE REDESIGN
+   ========================================================================== */
+
+.doctor-suite-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+
+/* Active Consultation Showcase Card */
+.consult-hero-card {
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 24px;
+  padding: 28px 32px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.02);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.consult-hero-card.is-active-exam {
+  border-color: #10B981;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F0FDF4 100%);
+  box-shadow: 0 16px 36px -8px rgba(16, 185, 129, 0.18), 0 4px 12px rgba(16, 185, 129, 0.05);
+}
+
+.consult-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.consult-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.consult-status-badge.in-exam {
+  background: #DCFCE7;
+  color: #15803D;
+  border: 1px solid #86EFAC;
+}
+
+.consult-status-badge.idle {
+  background: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #CBD5E1;
+}
+
+.pulse-dot-green {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulseGreen 1.8s infinite;
+}
+
+@keyframes pulseGreen {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.consult-patient-details-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0;
+}
+
+@media (max-width: 768px) {
+  .consult-patient-details-grid {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+}
+
+.patient-exam-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #3E69FE 0%, #2563EB 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(62, 105, 254, 0.3);
+}
+
+.patient-exam-avatar.green-theme {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+}
+
+.patient-meta-name {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0F172A;
+  margin: 0 0 6px 0;
+}
+
+.patient-meta-subrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.consult-stopwatch-display {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  padding: 12px 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.stopwatch-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #64748B;
+  letter-spacing: 1px;
+}
+
+.stopwatch-time {
+  font-size: 26px;
+  font-weight: 900;
+  color: #10B981;
+  font-family: var(--font-mono);
+  line-height: 1.2;
+  margin: 2px 0;
+}
+
+/* Action Controls Bar */
+.exam-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.btn-complete-exam {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 14px;
+  padding: 12px 26px;
+  font-size: 14.5px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-complete-exam:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.45);
+}
+
+.btn-skip-exam {
+  background: #F8FAFC;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-skip-exam:hover {
+  background: #F1F5F9;
+  color: #1E293B;
+}
+
+.btn-noshow-exam {
+  background: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FECACA;
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-noshow-exam:hover {
+  background: #FEE2E2;
+}
+
+.btn-call-next-hero {
+  background: linear-gradient(135deg, #3E69FE 0%, #2563EB 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 6px 20px rgba(62, 105, 254, 0.35);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-call-next-hero:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(62, 105, 254, 0.45);
+}
+
+.btn-call-next-hero:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 5-Slot Batch Grid Container */
+.slots-container-card {
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 24px;
+  padding: 28px 32px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+}
+
+.slots-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.batch-toggle-group {
+  display: flex;
+  background: #F1F5F9;
+  padding: 4px;
+  border-radius: 14px;
+  gap: 4px;
+}
+
+.batch-toggle-btn {
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748B;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.batch-toggle-btn.active {
+  background: #FFFFFF;
+  color: #0F172A;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.slots-grid-5-col {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .slots-grid-5-col {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+/* Single Slot Card Styles */
+.slot-spot-card {
+  border-radius: 18px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 200px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.slot-spot-card.occupied-consulting {
+  background: #F0FDF4;
+  border: 2px solid #10B981;
+  box-shadow: 0 10px 25px -4px rgba(16, 185, 129, 0.22);
+  transform: translateY(-2px);
+}
+
+.slot-spot-card.occupied-waiting {
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+}
+
+.slot-spot-card.occupied-waiting:hover {
+  border-color: #93C5FD;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -4px rgba(62, 105, 254, 0.12);
+}
+
+.slot-spot-card.available-empty {
+  background: #F8FAFC;
+  border: 1.5px dashed #CBD5E1;
+  opacity: 0.85;
+}
+
+.slot-spot-card.available-empty:hover {
+  opacity: 1;
+  border-color: #94A3B8;
+  background: #F1F5F9;
+}
+
+.slot-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.slot-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.slot-tag.blue {
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.slot-tag.green {
+  background: #DCFCE7;
+  color: #15803D;
+}
+
+.slot-tag.muted {
+  background: #E2E8F0;
+  color: #64748B;
+}
+
+.slot-patient-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1E293B;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-patient-contact {
+  font-size: 12px;
+  color: #64748B;
+  font-family: var(--font-mono);
+  margin-bottom: 12px;
+  display: block;
+}
+
+.priority-badge-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+}
+
+.priority-badge-chip.elderly {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FCD34D;
+}
+
+.priority-badge-chip.pregnant {
+  background: #FCE7F3;
+  color: #BE185D;
+  border: 1px solid #FBCFE8;
+}
+
+.priority-badge-chip.emergency {
+  background: #FEE2E2;
+  color: #B91C1C;
+  border: 1px solid #FCA5A5;
+}
+
+.priority-badge-chip.standard {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #E2E8F0;
+}
+
+.slot-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #94A3B8;
+  padding: 16px 0;
+}
+
+.slot-empty-icon {
+  font-size: 26px;
+  color: #CBD5E1;
+  margin-bottom: 8px;
+}
+
+.slot-empty-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748B;
+  margin-bottom: 2px;
+}
+
+.slot-empty-hint {
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+

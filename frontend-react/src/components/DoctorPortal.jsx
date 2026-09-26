@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOpenDoctorRegistration }) {
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
+  const [selectedBatchId, setSelectedBatchId] = useState('b1'); // 'b1' (Morning) | 'b2' (Evening)
   const [timerSeconds, setTimerSeconds] = useState(0);
 
   const { appointments, callNext, completeConsultation, skipPatient, markNoShow } = db;
@@ -10,18 +11,34 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
   const currentDocCode = doctor?.doctorCode?.toUpperCase() || '';
   const currentDocId = doctor?.doctorId || doctor?.uid || '';
 
-  const activeQueue = appointments
+  // All active appointments for this doctor (waiting or in_consultation)
+  const allActiveDoctorApts = appointments
     .filter(
       a => (a.doctorId === currentDocId || a.doctorCode?.toUpperCase() === currentDocCode) &&
            (a.status === 'waiting' || a.status === 'in_consultation')
     )
     .sort((a, b) => {
-      if (a.batchId !== b.batchId) return a.batchId.localeCompare(b.batchId);
-      return a.slotNumber - b.slotNumber;
+      if (a.batchId !== b.batchId) return (a.batchId || 'b1').localeCompare(b.batchId || 'b1');
+      return (a.slotNumber || 0) - (b.slotNumber || 0);
     });
 
-  const inConsultation = activeQueue.find(a => a.status === 'in_consultation');
-  const waitingPatients = activeQueue.filter(a => a.status === 'waiting');
+  // Current patient in consultation across any batch
+  const inConsultation = allActiveDoctorApts.find(a => a.status === 'in_consultation');
+
+  // If in consultation, automatically align selected batch to current consulting batch
+  useEffect(() => {
+    if (inConsultation?.batchId) {
+      setSelectedBatchId(inConsultation.batchId);
+    }
+  }, [inConsultation?.batchId]);
+
+  // Appointments in the currently selected batch
+  const batchAppointments = allActiveDoctorApts.filter(
+    a => (a.batchId || 'b1') === selectedBatchId
+  );
+
+  const waitingPatients = allActiveDoctorApts.filter(a => a.status === 'waiting');
+  const batchWaitingPatients = batchAppointments.filter(a => a.status === 'waiting');
 
   // Cured / Completed Patients for this specific doctor
   const completedPatients = appointments
@@ -68,9 +85,40 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
     return `${m}:${s}`;
   };
 
-  const activeBatchName = activeQueue[0]?.batchId === 'b2' ? 'Evening Batch' : 'Morning Batch';
+  // Helper to format priority badge
+  const renderPriorityBadge = priorityCategory => {
+    const cat = (priorityCategory || 'none').toLowerCase();
+    if (cat.includes('elderly')) {
+      return (
+        <span className="priority-badge-chip elderly font-mono">
+          <i className="fa-solid fa-person-cane"></i> ELDERLY (60+)
+        </span>
+      );
+    }
+    if (cat.includes('pregnant')) {
+      return (
+        <span className="priority-badge-chip pregnant font-mono">
+          <i className="fa-solid fa-person-pregnant"></i> PREGNANT
+        </span>
+      );
+    }
+    if (cat.includes('emergency')) {
+      return (
+        <span className="priority-badge-chip emergency font-mono">
+          <i className="fa-solid fa-truck-medical"></i> EMERGENCY
+        </span>
+      );
+    }
+    return (
+      <span className="priority-badge-chip standard font-mono">
+        <i className="fa-solid fa-user"></i> STANDARD
+      </span>
+    );
+  };
 
-  // If no doctor selected
+  // 5-Slot visual mapping for the active batch
+  const fixedSlots = [1, 2, 3, 4, 5];
+
   if (!doctor) {
     return (
       <main className="page-viewport">
@@ -113,65 +161,91 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
     );
   }
 
+  const batchDisplayName = selectedBatchId === 'b2' ? 'Evening Batch (16:00 - 19:00)' : 'Morning Batch (10:00 - 13:00)';
+  const occupiedSlotsCount = batchAppointments.length;
+  const occupancyPercent = Math.round((occupiedSlotsCount / 5) * 100);
+
   return (
     <main className="page-viewport">
-      <div className="portal-main-container">
+      <div className="portal-main-container" style={{ maxWidth: '1240px', margin: '0 auto', padding: '0 20px' }}>
 
-        {/* Doctor Top Banner */}
-        <section className="doctor-banner-overview">
-          <div className="doc-hero-left">
-            <div className="doc-badge-avatar">
-              <i className="fa-solid fa-user-doctor"></i>
+        {/* Top Doctor Profile Banner */}
+        <section className="doctor-banner-overview" style={{
+          background: '#FFFFFF',
+          borderRadius: '24px',
+          padding: '24px 28px',
+          border: '1px solid #E2E8F0',
+          boxShadow: '0 4px 20px -2px rgba(0,0,0,0.04)',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '24px'
+              }}>
+                <i className="fa-solid fa-user-doctor"></i>
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                    {doctor.name}
+                  </h1>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    background: '#DCFCE7',
+                    color: '#15803D',
+                    border: '1px solid #86EFAC'
+                  }}>
+                    <span className="pulse-dot-green"></span> ON DUTY • CLINIC ACTIVE
+                  </span>
+                </div>
+                <div style={{ fontSize: '13px', color: '#64748B', marginTop: '4px' }}>
+                  <span>{doctor.department}</span> • Code: <strong className="font-mono text-blue">{doctor.doctorCode}</strong> • Experience: {doctor.age || 42} Yrs
+                </div>
+              </div>
             </div>
-            <div className="doc-title-group">
-              <div className="doc-credential-line">
-                <h1 className="doc-main-name">{doctor.name}</h1>
-                <span className="doc-active-badge font-mono" style={{ background: doctor.isAvailable !== false ? '#DCFCE7' : '#F1F5F9', color: doctor.isAvailable !== false ? '#15803D' : '#64748B' }}>
-                  <span className="pulse-dot-green"></span> {doctor.isAvailable !== false ? 'ON DUTY • CLINIC ACTIVE' : 'OFFLINE'}
-                </span>
-              </div>
-              <div className="doc-sub-line">
-                {doctor.department} • Code: <strong className="font-mono text-blue">{doctor.doctorCode}</strong> • Age/Exp: {doctor.age || 42} Yrs
-              </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {doctors && doctors.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748B' }}>Switch:</span>
+                  <select
+                    className="doctor-switcher-select"
+                    value={doctor.doctorCode}
+                    onChange={e => {
+                      const d = doctors.find(doc => doc.doctorCode === e.target.value);
+                      if (d) onSelectDoctor(d);
+                    }}
+                    style={{ padding: '6px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #CBD5E1' }}
+                  >
+                    {doctors.map(d => (
+                      <option key={d.doctorId} value={d.doctorCode}>
+                        {d.name} ({d.doctorCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="doc-hero-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {doctors && doctors.length > 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748B' }}>SWITCH CLINICIAN:</span>
-                <select
-                  className="doctor-switcher-select"
-                  value={doctor.doctorCode}
-                  onChange={e => {
-                    const d = doctors.find(doc => doc.doctorCode === e.target.value);
-                    if (d) onSelectDoctor(d);
-                  }}
-                  style={{ padding: '6px 12px', fontSize: '13px' }}
-                >
-                  {doctors.map(d => (
-                    <option key={d.doctorId} value={d.doctorCode}>
-                      {d.name} ({d.doctorCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <button
-              type="button"
-              className="btn-secondary-action"
-              onClick={onOpenDoctorRegistration}
-              style={{ padding: '8px 14px', fontSize: '13px' }}
-            >
-              <i className="fa-solid fa-user-plus"></i>
-              <span>New Clinician</span>
-            </button>
           </div>
         </section>
 
-        {/* Doctor Suite Tabs: Active Queue vs Cured History */}
-        <div style={{ display: 'flex', gap: '12px', margin: '24px 0 16px', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px' }}>
+        {/* Doctor Portal Tabs: Active Queue vs Cured History */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px' }}>
           <button
             type="button"
             className={`btn-filter-pill ${activeTab === 'queue' ? 'active' : ''}`}
@@ -191,9 +265,9 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
             }}
           >
             <i className="fa-solid fa-users-line"></i>
-            <span>Live Consultation Queue</span>
+            <span>Consultation & 5-Slot Batch Queue</span>
             <span style={{ background: activeTab === 'queue' ? 'rgba(255,255,255,0.25)' : '#F1F5F9', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>
-              {activeQueue.length}
+              {allActiveDoctorApts.length}
             </span>
           </button>
 
@@ -223,182 +297,466 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
           </button>
         </div>
 
-        {/* Tab 1: Live Consultation Suite */}
+        {/* Tab 1: Live Consultation & 5-Slot Batch Suite */}
         {activeTab === 'queue' && (
-          <>
-            {/* Consultation Suite Action Cards Grid */}
-            <section className="doctor-action-grid">
+          <div className="doctor-suite-wrapper">
 
-              {/* Card 1: Currently In Consultation */}
-              <div className="doc-panel-card consult-active-card">
-                <div className="doc-card-header">
-                  <span className="sm-badge pulse-badge">
-                    <span className="pulse-dot-green"></span> IN-EXAMINATION
-                  </span>
-                  <span className="doc-batch-label font-mono">
-                    {inConsultation ? `Slot ${inConsultation.slotNumber} • ${activeBatchName}` : activeBatchName}
-                  </span>
-                </div>
-
-                <div className="doc-card-body">
+            {/* ========================================================================= */}
+            {/* 1. ACTIVE CONSULTATION SHOWCASE (CLEARLY SEPARATED HERO CARD)            */}
+            {/* ========================================================================= */}
+            <section className={`consult-hero-card ${inConsultation ? 'is-active-exam' : ''}`}>
+              <div className="consult-hero-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {inConsultation ? (
-                    <div className="consulting-patient-profile">
-                      <div className="patient-avatar-large">
-                        {inConsultation.patientName?.charAt(0) || 'P'}
-                      </div>
-                      <div className="patient-identity-block">
-                        <h2 className="consult-patient-name">{inConsultation.patientName}</h2>
-                        <div className="patient-tags-row">
-                          <span className="tag-detail font-mono">Age: {inConsultation.patientAge || '32'}</span>
-                          <span className="tag-detail font-mono">Phone: {inConsultation.patientPhone}</span>
-                          {inConsultation.priorityCategory && inConsultation.priorityCategory !== 'none' && (
-                            <span className="priority-badge-pill font-mono">
-                              <i className="fa-solid fa-star"></i> {inConsultation.priorityCategory.toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Live Consultation Timer */}
-                      <div className="consultation-stopwatch-box">
-                        <div className="timer-label font-mono">CONSULTATION DURATION</div>
-                        <div className="timer-digits font-mono">{formatTimer(timerSeconds)}</div>
-                        <small className="timer-hint">Auto-logged to Firestore analytics</small>
-                      </div>
-                    </div>
+                    <span className="consult-status-badge in-exam">
+                      <span className="pulse-dot-green"></span> IN-EXAMINATION • ACTIVE CONSULTATION
+                    </span>
                   ) : (
-                    <div className="no-active-consultation-state">
-                      <div className="empty-icon-wrap">
-                        <i className="fa-solid fa-stethoscope"></i>
-                      </div>
-                      <h3>No Patient in Consultation Suite</h3>
-                      <p>Click "Call Next Patient" below to summon the highest priority patient from the waiting queue.</p>
-                    </div>
+                    <span className="consult-status-badge idle">
+                      <i className="fa-solid fa-stethoscope"></i> CONSULTATION SUITE IDLE
+                    </span>
                   )}
+                  <span className="font-mono" style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>
+                    {inConsultation ? `Slot ${inConsultation.slotNumber} • ${inConsultation.batchId === 'b2' ? 'Evening Batch' : 'Morning Batch'}` : 'Room 102 Ready'}
+                  </span>
                 </div>
 
-                <div className="doc-card-footer">
-                  {inConsultation ? (
-                    <div className="consult-actions-bar">
-                      <button
-                        type="button"
-                        className="btn-complete-consultation"
-                        onClick={() => completeConsultation(doctor.doctorId || doctor.doctorCode)}
-                        title="Mark consultation finished and log analytics"
-                      >
-                        <i className="fa-solid fa-circle-check"></i>
-                        <span>Complete (✅)</span>
-                      </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span className="font-mono text-blue" style={{ fontSize: '12px', fontWeight: 700 }}>
+                    <i className="fa-solid fa-bolt"></i> Real-time Cloud Sync
+                  </span>
+                </div>
+              </div>
 
-                      <button
-                        type="button"
-                        className="btn-skip-consultation"
-                        onClick={() => skipPatient(inConsultation.appointmentId || inConsultation.id)}
-                        title="Move to tail of current batch"
-                      >
-                        <i className="fa-solid fa-forward-step"></i>
-                        <span>Skip (⏭️)</span>
-                      </button>
+              {/* Consultation Body */}
+              {inConsultation ? (
+                <div className="consult-patient-details-grid">
+                  <div className="patient-exam-avatar green-theme">
+                    {inConsultation.patientName?.charAt(0)?.toUpperCase() || 'P'}
+                  </div>
 
-                      <button
-                        type="button"
-                        className="btn-noshow-consultation"
-                        onClick={() => markNoShow(inConsultation.appointmentId || inConsultation.id)}
-                        title="Mark as absent / no show"
-                      >
-                        <i className="fa-solid fa-user-xmark"></i>
-                        <span>No-Show (❌)</span>
-                      </button>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <h2 className="patient-meta-name">
+                        {inConsultation.patientName}
+                      </h2>
+                      {renderPriorityBadge(inConsultation.priorityCategory)}
                     </div>
-                  ) : (
+
+                    <div className="patient-meta-subrow" style={{ marginTop: '8px' }}>
+                      <span style={{ background: '#F1F5F9', padding: '4px 10px', borderRadius: '8px', fontSize: '12.5px', fontFamily: 'monospace', color: '#334155' }}>
+                        <i className="fa-solid fa-phone" style={{ marginRight: '6px' }}></i>{inConsultation.patientPhone || 'No Phone'}
+                      </span>
+                      <span style={{ background: '#F1F5F9', padding: '4px 10px', borderRadius: '8px', fontSize: '12.5px', color: '#334155' }}>
+                        Age: <strong>{inConsultation.patientAge || '32'}</strong>
+                      </span>
+                      <span style={{ background: '#EFF6FF', padding: '4px 10px', borderRadius: '8px', fontSize: '12.5px', color: '#2563EB', fontWeight: 600 }}>
+                        <i className="fa-solid fa-hospital-user" style={{ marginRight: '6px' }}></i>Slot #{inConsultation.slotNumber}
+                      </span>
+                      {inConsultation.patientEmail && (
+                        <span style={{ fontSize: '12px', color: '#64748B' }}>
+                          {inConsultation.patientEmail}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stopwatch Timer */}
+                  <div className="consult-stopwatch-display">
+                    <span className="stopwatch-title">CONSULTATION TIME</span>
+                    <div className="stopwatch-time">{formatTimer(timerSeconds)}</div>
+                    <small style={{ fontSize: '11px', color: '#64748B' }}>Auto-logging to analytics</small>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '36px 20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '24px',
+                  flexWrap: 'wrap',
+                  textAlign: 'left'
+                }}>
+                  <div style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '50%',
+                    background: '#EFF6FF',
+                    color: '#3E69FE',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '28px'
+                  }}>
+                    <i className="fa-solid fa-stethoscope"></i>
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                      No Patient Currently in Consultation Room
+                    </h3>
+                    <p style={{ fontSize: '13.5px', color: '#64748B', margin: '4px 0 0' }}>
+                      Click <strong>"Call Next Patient"</strong> to summon the next patient according to priority scheduling.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Controls Bar */}
+              <div className="exam-actions-row">
+                {inConsultation ? (
+                  <>
                     <button
                       type="button"
-                      className="btn-call-next-primary"
-                      onClick={() => callNext(doctor.doctorId || doctor.doctorCode)}
-                      disabled={waitingPatients.length === 0}
+                      className="btn-complete-exam"
+                      onClick={() => completeConsultation(doctor.doctorId || doctor.doctorCode)}
+                      title="Mark consultation completed and record cured patient"
                     >
-                      <i className="fa-solid fa-bell"></i>
-                      <span>Call Next Patient ({waitingPatients.length} waiting)</span>
+                      <i className="fa-solid fa-circle-check"></i>
+                      <span>Complete (✅)</span>
                     </button>
-                  )}
+
+                    <button
+                      type="button"
+                      className="btn-skip-exam"
+                      onClick={() => skipPatient(inConsultation.appointmentId || inConsultation.id)}
+                      title="Move patient to tail of the current batch queue"
+                    >
+                      <i className="fa-solid fa-forward-step"></i>
+                      <span>Skip (⏭️)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn-noshow-exam"
+                      onClick={() => markNoShow(inConsultation.appointmentId || inConsultation.id)}
+                      title="Mark patient as absent / no show"
+                    >
+                      <i className="fa-solid fa-user-xmark"></i>
+                      <span>No-Show (❌)</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-call-next-hero"
+                    onClick={() => callNext(doctor.doctorId || doctor.doctorCode)}
+                    disabled={waitingPatients.length === 0}
+                  >
+                    <i className="fa-solid fa-bell"></i>
+                    <span>Call Next Patient ({waitingPatients.length} Waiting in Queue)</span>
+                  </button>
+                )}
+              </div>
+            </section>
+
+            {/* ========================================================================= */}
+            {/* 2. ALL 5 BATCH SLOTS VISUAL GRID (STRUCTURED ROW/GRID LAYOUT)            */}
+            {/* ========================================================================= */}
+            <section className="slots-container-card">
+              <div className="slots-header-bar">
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                      Active Batch Slots
+                    </h3>
+                    <span style={{
+                      background: '#EFF6FF',
+                      color: '#2563EB',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '11.5px',
+                      fontWeight: 800,
+                      fontFamily: 'monospace'
+                    }}>
+                      FIXED 5-PATIENT CAPACITY
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '13px', color: '#64748B', margin: '4px 0 0' }}>
+                    Visual slot arrangement for <strong>{batchDisplayName}</strong> • {occupiedSlotsCount}/5 Booked ({occupancyPercent}% Load)
+                  </p>
+                </div>
+
+                {/* Batch Selector Switcher */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div className="batch-toggle-group">
+                    <button
+                      type="button"
+                      className={`batch-toggle-btn ${selectedBatchId === 'b1' ? 'active' : ''}`}
+                      onClick={() => setSelectedBatchId('b1')}
+                    >
+                      <i className="fa-solid fa-sun" style={{ marginRight: '6px' }}></i>
+                      Morning Batch
+                    </button>
+                    <button
+                      type="button"
+                      className={`batch-toggle-btn ${selectedBatchId === 'b2' ? 'active' : ''}`}
+                      onClick={() => setSelectedBatchId('b2')}
+                    >
+                      <i className="fa-solid fa-moon" style={{ marginRight: '6px' }}></i>
+                      Evening Batch
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 2: Next in Line Waiting Patients */}
-              <div className="doc-panel-card">
-                <div className="doc-card-header">
-                  <span className="sm-title">NEXT IN LINE (WAITING QUEUE)</span>
-                  <span className="doc-counter font-mono">{waitingPatients.length} Waiting</span>
-                </div>
+              {/* The 5 Fixed Appointment Slots Grid */}
+              <div className="slots-grid-5-col">
+                {fixedSlots.map(slotNum => {
+                  const appointmentOnSlot = batchAppointments.find(a => a.slotNumber === slotNum);
+                  const isCurrentInExam = appointmentOnSlot && appointmentOnSlot.status === 'in_consultation';
+                  const isWaiting = appointmentOnSlot && appointmentOnSlot.status === 'waiting';
 
-                <div className="doc-card-body">
-                  {waitingPatients.length === 0 ? (
-                    <div className="empty-waiting-queue">
-                      <i className="fa-regular fa-calendar-check"></i>
-                      <p>All waiting queue slots for Dr. {doctor.name} have been served or are empty.</p>
-                    </div>
-                  ) : (
-                    <div className="waiting-patient-list">
-                      {waitingPatients.map((pat, idx) => (
-                        <div key={pat.appointmentId || pat.id} className="waiting-patient-item">
-                          <div className="waiting-rank-col font-mono">
-                            <span className="rank-num">#{idx + 1}</span>
-                            <span className="slot-sub">Slot {pat.slotNumber}</span>
-                          </div>
-                          <div className="waiting-info-col">
-                            <span className="waiting-name">{pat.patientName}</span>
-                            <span className="waiting-meta font-mono">
-                              {pat.patientPhone} • Batch: {pat.batchId === 'b2' ? 'Evening' : 'Morning'}
+                  if (isCurrentInExam) {
+                    return (
+                      <div key={slotNum} className="slot-spot-card occupied-consulting">
+                        <div>
+                          <div className="slot-top-row">
+                            <span className="slot-tag green font-mono">
+                              SLOT {slotNum}
+                            </span>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '10.5px',
+                              fontWeight: 800,
+                              color: '#15803D'
+                            }}>
+                              <span className="pulse-dot-green" style={{ width: '6px', height: '6px' }}></span> IN EXAM
                             </span>
                           </div>
-                          <div className="waiting-action-col">
-                            {pat.priorityCategory && pat.priorityCategory !== 'none' ? (
-                              <span className="priority-mini-pill font-mono">
-                                {pat.priorityCategory.toUpperCase()}
-                              </span>
-                            ) : (
-                              <span className="standard-mini-pill font-mono">STANDARD</span>
-                            )}
+
+                          <h4 className="slot-patient-name" title={appointmentOnSlot.patientName}>
+                            {appointmentOnSlot.patientName}
+                          </h4>
+                          <span className="slot-patient-contact">
+                            {appointmentOnSlot.patientPhone || 'No Phone'}
+                          </span>
+
+                          <div style={{ marginTop: '8px' }}>
+                            {renderPriorityBadge(appointmentOnSlot.priorityCategory)}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
-                <div className="doc-card-footer">
-                  <span className="waiting-footer-note font-mono">
-                    <i className="fa-solid fa-clock-rotate-left"></i> Real-time priority shift active in Firestore
-                  </span>
-                </div>
+                        <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #BBF7D0' }}>
+                          <span style={{ fontSize: '11px', color: '#15803D', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <i className="fa-solid fa-user-check"></i> Examining in Suite
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isWaiting) {
+                    return (
+                      <div key={slotNum} className="slot-spot-card occupied-waiting">
+                        <div>
+                          <div className="slot-top-row">
+                            <span className="slot-tag blue font-mono">
+                              SLOT {slotNum}
+                            </span>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#64748B',
+                              background: '#F1F5F9',
+                              padding: '2px 6px',
+                              borderRadius: '6px'
+                            }}>
+                              WAITING
+                            </span>
+                          </div>
+
+                          <h4 className="slot-patient-name" title={appointmentOnSlot.patientName}>
+                            {appointmentOnSlot.patientName}
+                          </h4>
+                          <span className="slot-patient-contact">
+                            {appointmentOnSlot.patientPhone || 'No Phone'}
+                          </span>
+
+                          <div style={{ marginTop: '8px' }}>
+                            {renderPriorityBadge(appointmentOnSlot.priorityCategory)}
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #F1F5F9' }}>
+                          <span style={{ fontSize: '11.5px', color: '#3E69FE', fontWeight: 700 }}>
+                            <i className="fa-solid fa-clock" style={{ marginRight: '4px' }}></i>In Queue Line
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Empty Slot Placeholder
+                  return (
+                    <div key={slotNum} className="slot-spot-card available-empty">
+                      <div className="slot-top-row">
+                        <span className="slot-tag muted font-mono">
+                          SLOT {slotNum}
+                        </span>
+                        <span style={{ fontSize: '10.5px', color: '#94A3B8', fontWeight: 700 }}>
+                          OPEN
+                        </span>
+                      </div>
+
+                      <div className="slot-empty-content">
+                        <i className="fa-regular fa-calendar-plus slot-empty-icon"></i>
+                        <span className="slot-empty-title">Available / Empty Slot</span>
+                        <span className="slot-empty-hint">Open for OPD booking</span>
+                      </div>
+
+                      <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #E2E8F0', textAlign: 'center' }}>
+                        <span style={{ fontSize: '10.5px', color: '#94A3B8', fontFamily: 'monospace' }}>
+                          Unassigned Spot
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
+              {/* Real-time Priority Shift Notice */}
+              <div style={{
+                marginTop: '20px',
+                padding: '12px 16px',
+                background: '#F8FAFC',
+                borderRadius: '12px',
+                border: '1px solid #E2E8F0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '12.5px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="fa-solid fa-clock-rotate-left" style={{ color: '#3E69FE' }}></i>
+                  <span><strong>Atomic Priority Shift:</strong> High priority patients (Elderly, Pregnant, Emergency) are dynamically inserted at Slot 1 with batch overflow spilling into Batch 2.</span>
+                </span>
+                <span className="font-mono text-blue" style={{ fontSize: '11.5px', fontWeight: 700 }}>
+                  Firestore onSnapshot Active
+                </span>
+              </div>
             </section>
-          </>
+
+            {/* ========================================================================= */}
+            {/* 3. SEQUENCE WAITING QUEUE LIST                                            */}
+            {/* ========================================================================= */}
+            <section style={{
+              background: '#FFFFFF',
+              borderRadius: '24px',
+              padding: '24px 28px',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 4px 20px -2px rgba(0,0,0,0.04)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                    Waiting Queue Line ({batchWaitingPatients.length} in this batch)
+                  </h4>
+                </div>
+                <span style={{ fontSize: '12px', color: '#64748B', fontFamily: 'monospace' }}>
+                  Chronological Order of Examination
+                </span>
+              </div>
+
+              {batchWaitingPatients.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 16px', color: '#94A3B8' }}>
+                  <i className="fa-regular fa-circle-check" style={{ fontSize: '32px', marginBottom: '8px', display: 'block', color: '#CBD5E1' }}></i>
+                  <span style={{ fontSize: '14px', fontWeight: 600 }}>All waiting slots in {batchDisplayName} are clear or empty.</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {batchWaitingPatients.map((pat, idx) => (
+                    <div
+                      key={pat.appointmentId || pat.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '14px 18px',
+                        borderRadius: '14px',
+                        background: '#F8FAFC',
+                        border: '1px solid #E2E8F0',
+                        gap: '12px',
+                        flexWrap: 'wrap'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '10px',
+                          background: '#EFF6FF',
+                          color: '#2563EB',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontFamily: 'monospace',
+                          fontWeight: 800,
+                          fontSize: '13px'
+                        }}>
+                          #{idx + 1}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <strong style={{ fontSize: '14.5px', color: '#1E293B' }}>{pat.patientName}</strong>
+                            <span style={{ fontSize: '11px', fontFamily: 'monospace', background: '#E2E8F0', padding: '2px 6px', borderRadius: '4px', color: '#475569' }}>
+                              Slot {pat.slotNumber}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '12px', color: '#64748B', fontFamily: 'monospace' }}>
+                            {pat.patientPhone || 'No Phone'} • Age: {pat.patientAge || '32'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {renderPriorityBadge(pat.priorityCategory)}
+
+                        {!inConsultation && idx === 0 && (
+                          <button
+                            type="button"
+                            className="btn-call-next-primary"
+                            onClick={() => callNext(doctor.doctorId || doctor.doctorCode)}
+                            style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '8px' }}
+                          >
+                            <i className="fa-solid fa-bell"></i> Call Now
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+          </div>
         )}
 
         {/* Tab 2: Cured / Completed History */}
         {activeTab === 'history' && (
-          <section className="cured-history-section" style={{ background: '#FFFFFF', borderRadius: '20px', padding: '24px', border: '1px solid #E2E8F0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <section className="cured-history-section" style={{ background: '#FFFFFF', borderRadius: '24px', padding: '28px', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px -2px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
               <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1E293B', margin: 0 }}>
-                  Completed Consultation Records
+                <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                  Completed & Cured Clinical Records
                 </h3>
                 <p style={{ fontSize: '13px', color: '#64748B', margin: '4px 0 0' }}>
                   Patients successfully examined and treated by Dr. {doctor.name}
                 </p>
               </div>
-              <span className="font-mono text-green" style={{ fontSize: '14px', fontWeight: 700 }}>
-                Total Cured: {completedPatients.length} Patients
+              <span className="font-mono text-green" style={{ fontSize: '14px', fontWeight: 800, background: '#DCFCE7', padding: '6px 14px', borderRadius: '10px', border: '1px solid #86EFAC' }}>
+                <i className="fa-solid fa-circle-check" style={{ marginRight: '6px' }}></i>Total Cured: {completedPatients.length} Patients
               </span>
             </div>
 
             {completedPatients.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94A3B8' }}>
-                <i className="fa-solid fa-file-medical" style={{ fontSize: '40px', marginBottom: '12px', display: 'block' }}></i>
-                <h4>No completed consultations logged yet today.</h4>
-                <p style={{ fontSize: '13px' }}>Mark patients as completed from the live queue to record examination history.</p>
+              <div style={{ textAlign: 'center', padding: '56px 20px', color: '#94A3B8' }}>
+                <i className="fa-solid fa-file-medical" style={{ fontSize: '44px', marginBottom: '14px', display: 'block', color: '#CBD5E1' }}></i>
+                <h4 style={{ fontSize: '16px', color: '#475569', margin: '0 0 6px 0' }}>No completed consultations logged yet today.</h4>
+                <p style={{ fontSize: '13px', margin: 0 }}>Mark patients as completed from the live queue to record examination history.</p>
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -420,33 +778,24 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
                         : 'Recently';
                       return (
                         <tr key={pat.appointmentId || pat.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1E293B' }}>
+                          <td style={{ padding: '14px 16px', fontWeight: 700, color: '#1E293B' }}>
                             {pat.patientName}
                           </td>
-                          <td style={{ padding: '12px 16px', color: '#64748B' }}>
+                          <td style={{ padding: '14px 16px', color: '#64748B' }}>
                             {pat.patientPhone || 'N/A'}
                           </td>
-                          <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>
+                          <td style={{ padding: '14px 16px', fontFamily: 'monospace' }}>
                             Slot {pat.slotNumber} ({pat.batchId === 'b2' ? 'Evening' : 'Morning'})
                           </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              background: pat.priorityCategory && pat.priorityCategory !== 'none' ? '#FEF3C7' : '#F1F5F9',
-                              color: pat.priorityCategory && pat.priorityCategory !== 'none' ? '#B45309' : '#64748B'
-                            }}>
-                              {pat.priorityCategory?.toUpperCase() || 'NONE'}
+                          <td style={{ padding: '14px 16px' }}>
+                            {renderPriorityBadge(pat.priorityCategory)}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span style={{ color: '#10B981', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <i className="fa-solid fa-circle-check"></i> Cured / Done
                             </span>
                           </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <span style={{ color: '#10B981', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <i className="fa-solid fa-circle-check"></i> Completed
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#64748B', fontFamily: 'monospace' }}>
+                          <td style={{ padding: '14px 16px', color: '#64748B', fontFamily: 'monospace' }}>
                             {endTime}
                           </td>
                         </tr>
