@@ -995,6 +995,67 @@ app.post('/api/mailtrap/send', async (req, res) => {
   }
 });
 
+// =============================================================================
+// GMAIL DIRECT SMTP DISPATCH API (Nodemailer)
+// =============================================================================
+app.post('/api/gmail/send', async (req, res) => {
+  try {
+    const {
+      to,
+      patientName = 'Patient',
+      subject = 'MediQueue Urgent: You are the NEXT patient in line',
+      text,
+      html,
+      gmailUser = process.env.GMAIL_USER,
+      gmailPass = process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD
+    } = req.body || {};
+
+    if (!to || !to.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Valid recipient email required' });
+    }
+
+    if (!gmailUser || !gmailPass) {
+      return res.status(400).json({
+        success: false,
+        message: 'Gmail User or App Password missing. Please provide gmailUser and gmailPass.'
+      });
+    }
+
+    console.log(`[Gmail Direct] Sending email to ${to} via Gmail account ${gmailUser}...`);
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailPass.replace(/\s+/g, '') // remove spaces from 16-char app password
+      }
+    });
+
+    const info = await transporter.sendMail({
+      from: `"MediQueue Hospital System" <${gmailUser}>`,
+      to,
+      subject,
+      text,
+      html
+    });
+
+    console.log('[Gmail Direct] Delivered successfully:', info.messageId);
+    return res.json({
+      success: true,
+      mode: 'gmail_direct',
+      message: `Real alert email delivered to ${to} via Gmail`,
+      messageId: info.messageId
+    });
+  } catch (err) {
+    console.error('[Gmail Direct Error]:', err);
+    return res.status(500).json({
+      success: false,
+      message: `Gmail error: ${err.message}`
+    });
+  }
+});
+
+
 
 // =============================================================================
 // SOCKET.IO REAL-TIME SUBSCRIPTION ENGINE

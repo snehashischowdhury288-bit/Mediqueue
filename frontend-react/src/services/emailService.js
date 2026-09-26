@@ -1,9 +1,10 @@
 /**
- * MediQueue Automated Email Service - Mailtrap Integration
+ * MediQueue Automated Email Service - Mailtrap & Gmail Integration
  * Background HTTP dispatch with zero client redirects (no mailto, no Gmail popups).
  *
- * Primary Provider: Mailtrap (mailtrap.io)
- * Endpoint: /api/mailtrap (Serverless & Node Express Gateway on port 5000)
+ * Supported Channels:
+ * 1. Mailtrap (mailtrap.io - Sandbox & Sending API)
+ * 2. Gmail SMTP Direct (Delivers physical emails into real Gmail inboxes via Nodemailer)
  */
 
 import { db, collection, addDoc, serverTimestamp } from '../firebase';
@@ -13,6 +14,7 @@ export const DEFAULT_MAILTRAP_SENDER = 'mailtrap@demomailtrap.com';
 
 export const EMAIL_PROVIDERS = {
   MAILTRAP: 'mailtrap',
+  GMAIL: 'gmail',
   EMAILJS: 'emailjs',
   RESEND: 'resend'
 };
@@ -23,6 +25,8 @@ export function getEmailConfig() {
     provider: localStorage.getItem('mq_email_provider') || EMAIL_PROVIDERS.MAILTRAP,
     mailtrapToken: localStorage.getItem('mq_mailtrap_token') || DEFAULT_MAILTRAP_TOKEN,
     mailtrapSender: localStorage.getItem('mq_mailtrap_sender') || DEFAULT_MAILTRAP_SENDER,
+    gmailUser: localStorage.getItem('mq_gmail_user') || '',
+    gmailPass: localStorage.getItem('mq_gmail_pass') || '',
     emailjsServiceId: localStorage.getItem('mq_emailjs_service_id') || '',
     emailjsTemplateId: localStorage.getItem('mq_emailjs_template_id') || '',
     emailjsPublicKey: localStorage.getItem('mq_emailjs_public_key') || '',
@@ -35,6 +39,8 @@ export function saveEmailConfig(config) {
   if (config.provider) localStorage.setItem('mq_email_provider', config.provider);
   if (config.mailtrapToken !== undefined) localStorage.setItem('mq_mailtrap_token', config.mailtrapToken.trim());
   if (config.mailtrapSender !== undefined) localStorage.setItem('mq_mailtrap_sender', config.mailtrapSender.trim());
+  if (config.gmailUser !== undefined) localStorage.setItem('mq_gmail_user', config.gmailUser.trim());
+  if (config.gmailPass !== undefined) localStorage.setItem('mq_gmail_pass', config.gmailPass.trim());
   if (config.emailjsServiceId !== undefined) localStorage.setItem('mq_emailjs_service_id', config.emailjsServiceId.trim());
   if (config.emailjsTemplateId !== undefined) localStorage.setItem('mq_emailjs_template_id', config.emailjsTemplateId.trim());
   if (config.emailjsPublicKey !== undefined) localStorage.setItem('mq_emailjs_public_key', config.emailjsPublicKey.trim());
@@ -57,12 +63,12 @@ export function generatePresetContent({ alertType, patientName, patientEmail, sl
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
         <div style="background: linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%); padding: 24px; color: #ffffff; text-align: center;">
           <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">MediQueue Clinical Queue Alert</h1>
-          <p style="margin: 6px 0 0; font-size: 13.5px; opacity: 0.9;">Powered by Mailtrap Dispatcher</p>
+          <p style="margin: 6px 0 0; font-size: 13.5px; opacity: 0.9;">Urgent Consultation Readiness Notice</p>
         </div>
         <div style="padding: 28px 24px; color: #1E293B; line-height: 1.6;">
           <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 14px 16px; border-radius: 8px; margin-bottom: 20px;">
             <strong style="color: #92400E; font-size: 15px;">📢 Immediate Attendance Required</strong>
-            <p style="margin: 4px 0 0; color: #78350F; font-size: 13.5px;">You are directly NEXT in line for your consultation.</p>
+            <p style="margin: 4px 0 0; color: #78350F; font-size: 13.5px;">You are directly NEXT in line for examination.</p>
           </div>
           <p style="font-size: 15px; margin: 0 0 16px;">Dear <strong>${patName}</strong>,</p>
           <p style="font-size: 14px; color: #475569; margin: 0 0 20px;">
@@ -86,7 +92,7 @@ export function generatePresetContent({ alertType, patientName, patientEmail, sl
             👉 <strong>Action Required:</strong> Please wait immediately outside the consultation door with your digital token ready.
           </p>
           <div style="border-top: 1px solid #E2E8F0; padding-top: 18px; text-align: center; color: #94A3B8; font-size: 12px;">
-            Automated notification dispatched via Mailtrap for MediQueue Hospital System.
+            Automated notification dispatched for MediQueue Hospital System.
           </div>
         </div>
       </div>
@@ -101,14 +107,14 @@ export function generatePresetContent({ alertType, patientName, patientEmail, sl
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #E2E8F0;">
       <div style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); padding: 22px; color: #ffffff; text-align: center;">
         <h1 style="margin: 0; font-size: 22px; font-weight: 800;">MediQueue Queue Progress Update</h1>
-        <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Dispatched via Mailtrap</p>
+        <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Consultation Alert</p>
       </div>
       <div style="padding: 24px; color: #1E293B; line-height: 1.6;">
         <p>Dear <strong>${patName}</strong>,</p>
         <p>Dr. <strong>${docName}</strong> has completed the previous consultation. You are now <strong>3 turns away</strong> in the queue (Slot #${slot}).</p>
         <p>Please arrive at the waiting area outside <strong>${room}</strong> immediately and prepare your digital token.</p>
         <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
-        <p style="font-size: 12px; color: #94A3B8; text-align: center;">MediQueue Automated Clinical Dispatch • Mailtrap Delivery</p>
+        <p style="font-size: 12px; color: #94A3B8; text-align: center;">MediQueue Automated Clinical Dispatch</p>
       </div>
     </div>
   `;
@@ -116,7 +122,7 @@ export function generatePresetContent({ alertType, patientName, patientEmail, sl
 }
 
 /**
- * Dispatches automated preset email via Mailtrap (with zero client redirects).
+ * Dispatches automated preset email (with zero client redirects).
  */
 export async function sendAutomatedPresetEmail({
   alertType = 'next_patient',
@@ -145,24 +151,60 @@ export async function sendAutomatedPresetEmail({
 
   const config = getEmailConfig();
 
-  // 1. Also queue into Firestore 'mail' collection (for logging/Firebase extensions)
+  // 1. Queue into Firestore 'mail' collection
   try {
     const mailCol = collection(db, 'mail');
     await addDoc(mailCol, {
       to: patientEmail,
-      message: {
-        subject,
-        text: plainText,
-        html
-      },
-      provider: 'mailtrap',
+      message: { subject, text: plainText, html },
+      provider: config.provider,
       createdAt: serverTimestamp()
     });
   } catch (firestoreErr) {
     console.warn('[EmailService] Firestore queue note:', firestoreErr.message);
   }
 
-  // 2. Primary Dispatch Channel: Mailtrap (via serverless API or Node Express gateway)
+  // 2. Direct Gmail SMTP Dispatch (if Gmail mode selected or credentials present)
+  if (config.provider === EMAIL_PROVIDERS.GMAIL && config.gmailUser && config.gmailPass) {
+    const gmailEndpoints = [
+      '/api/gmail/send',
+      'http://localhost:5000/api/gmail/send'
+    ];
+
+    for (const endpoint of gmailEndpoints) {
+      try {
+        console.log(`[EmailService] Dispatching directly to Gmail via ${endpoint}...`);
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: patientEmail,
+            patientName: patientName || 'Patient',
+            subject,
+            text: plainText,
+            html,
+            gmailUser: config.gmailUser,
+            gmailPass: config.gmailPass
+          })
+        });
+
+        if (response.ok) {
+          const resData = await response.json();
+          return {
+            success: true,
+            provider: 'Gmail',
+            message: `Real alert email delivered to ${patientEmail} via Gmail`,
+            recipient: patientEmail,
+            data: resData
+          };
+        }
+      } catch (err) {
+        console.warn(`[EmailService] Failed calling Gmail endpoint ${endpoint}:`, err.message);
+      }
+    }
+  }
+
+  // 3. Mailtrap Dispatch
   const token = config.mailtrapToken || DEFAULT_MAILTRAP_TOKEN;
   const sender = config.mailtrapSender || DEFAULT_MAILTRAP_SENDER;
 
@@ -176,10 +218,6 @@ export async function sendAutomatedPresetEmail({
     sender
   };
 
-  // Try endpoints in sequence:
-  // 1) Relative '/api/mailtrap' (proxied by Vite to port 5000 locally or Vercel serverless in production)
-  // 2) Direct 'http://localhost:5000/api/mailtrap/send'
-  // 3) Direct Mailtrap API sandbox fallback
   const candidateEndpoints = [
     '/api/mailtrap',
     'http://localhost:5000/api/mailtrap/send',
@@ -214,9 +252,8 @@ export async function sendAutomatedPresetEmail({
     }
   }
 
-  // Fallback: If local backend and serverless are both unreachable, call Mailtrap Sandbox API directly
+  // Direct Mailtrap Sandbox API fallback
   try {
-    console.log('[EmailService] Calling direct Mailtrap Sandbox API fallback...');
     const sandboxRes = await fetch('https://sandbox.api.mailtrap.io/api/send/4929850', {
       method: 'POST',
       headers: {
@@ -244,12 +281,12 @@ export async function sendAutomatedPresetEmail({
       };
     }
   } catch (directErr) {
-    console.warn('[EmailService] Direct sandbox attempt failed (likely CORS):', directErr.message);
+    console.warn('[EmailService] Direct sandbox attempt note:', directErr.message);
   }
 
   return {
     success: false,
-    provider: 'Mailtrap',
-    message: 'Could not connect to Mailtrap email gateway. Please ensure backend service is running.'
+    provider: config.provider === EMAIL_PROVIDERS.GMAIL ? 'Gmail' : 'Mailtrap',
+    message: 'Could not connect to email gateway. Please check your credentials in ⚙️ Settings.'
   };
 }
