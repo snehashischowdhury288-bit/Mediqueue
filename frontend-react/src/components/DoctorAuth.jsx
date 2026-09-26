@@ -7,16 +7,16 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
 
   // Form Fields
   const [name, setName] = useState('');
-  const [department, setDepartment] = useState('Cardiology');
-  const [age, setAge] = useState('42');
-  const [doctorCode, setDoctorCode] = useState('DOC-404');
+  const [department, setDepartment] = useState('General Medicine');
+  const [age, setAge] = useState('40');
+  const [doctorCode, setDoctorCode] = useState(() => `DOC-${Math.floor(100 + Math.random() * 899)}`);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const { signInWithEmail, signUpWithEmail, signInWithGoogle, registerDoctor, doctors } = db;
 
   const handleGenerateCode = () => {
-    const randomCode = `DOC-${Math.floor(100 + Math.random() * 900)}`;
+    const randomCode = `DOC-${Math.floor(100 + Math.random() * 899)}`;
     setDoctorCode(randomCode);
     showToast(`Generated Doctor Code: ${randomCode}`);
   };
@@ -87,17 +87,25 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
         setIsSubmitting(false);
 
         if (res.success) {
-          // Find matching doctor record from doctors collection
-          const matchedDoc = doctors.find(
-            d => d.doctorId === res.user.uid || (res.user.doctorCode && d.doctorCode?.toUpperCase() === res.user.doctorCode.toUpperCase())
-          ) || {
-            doctorId: res.user.uid,
-            doctorCode: res.user.doctorCode || 'DOC-101',
-            name: res.user.name || 'Dr. Clinician',
-            department: res.user.department || 'General Medicine'
-          };
+          // Find matching doctor record from doctors collection strictly by UID or Email
+          let matchedDoc = doctors.find(
+            d => (res.user.uid && d.doctorId === res.user.uid) ||
+                 (res.user.email && d.email && d.email.toLowerCase() === res.user.email.toLowerCase())
+          );
 
-          showToast(`Welcome back, ${matchedDoc.name}!`);
+          if (!matchedDoc) {
+            matchedDoc = await registerDoctor({
+              doctorId: res.user.uid,
+              doctorCode: res.user.doctorCode || `DOC-${Math.floor(100 + Math.random() * 899)}`,
+              name: res.user.name || 'Doctor',
+              email: res.user.email || email.trim(),
+              department: res.user.department || department || 'General Medicine',
+              age: parseInt(age, 10) || 40,
+              isAvailable: true
+            });
+          }
+
+          showToast(`Welcome back, Dr. ${matchedDoc.name}!`);
           onAuthSuccess({ ...res.user, role: 'doctor' }, matchedDoc);
         } else {
           console.error('[DoctorAuth Sign-In Error Code]:', res.code || 'UNKNOWN');
@@ -119,32 +127,34 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
     setIsSubmitting(true);
     showToast('Connecting to Google...');
     try {
-      const finalCode = (doctorCode.trim() || `DOC-${Math.floor(100 + Math.random() * 900)}`).toUpperCase();
+      const uniqueCode = (doctorCode.trim() || `DOC-${Math.floor(100 + Math.random() * 899)}`).toUpperCase();
       const res = await signInWithGoogle('doctor', {
-        department,
-        doctorCode: finalCode,
+        department: department || 'General Medicine',
+        doctorCode: uniqueCode,
         isAvailable: true
       });
 
       if (res.success) {
-        // Check if this doctor is already in doctors collection
+        // Strictly match doctor by authenticated user UID or Email
         let matchedDoc = doctors.find(
-          d => d.doctorId === res.user.uid || d.doctorCode?.toUpperCase() === finalCode
+          d => (res.user.uid && d.doctorId === res.user.uid) ||
+               (res.user.email && d.email && d.email.toLowerCase() === res.user.email.toLowerCase())
         );
 
         if (!matchedDoc) {
           matchedDoc = await registerDoctor({
             doctorId: res.user.uid,
-            doctorCode: finalCode,
-            name: res.user.name,
-            department,
-            age: 40,
+            doctorCode: res.user.doctorCode || uniqueCode,
+            name: res.user.name || 'Doctor',
+            email: res.user.email || '',
+            department: department || 'General Medicine',
+            age: parseInt(age, 10) || 40,
             isAvailable: true
           });
         }
 
         setIsSubmitting(false);
-        showToast(`Clinician authenticated: ${res.user.name}`);
+        showToast(`Clinician authenticated: Dr. ${res.user.name || 'Doctor'}`);
         onAuthSuccess({ ...res.user, role: 'doctor' }, matchedDoc);
       } else {
         setIsSubmitting(false);

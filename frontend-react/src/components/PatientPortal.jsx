@@ -19,12 +19,23 @@ export default function PatientPortal({
   const [codeLookupError, setCodeLookupError] = useState(null);
   const [turnAlertDismissed, setTurnAlertDismissed] = useState(false);
 
-  // Booking Form State
+  // Booking Form State - bound to authenticated patient info
   const [patName, setPatName] = useState(user?.name || '');
-  const [patAge, setAge] = useState(user?.age || '32');
+  const [patAge, setAge] = useState(user?.age ? String(user.age) : '');
   const [patPhone, setPhone] = useState(user?.phone || '');
-  const [patEmail, setEmail] = useState(user?.email || 'patient@example.com');
+  const [patEmail, setEmail] = useState(user?.email || '');
   const [priorityCategory, setPriorityCategory] = useState(user?.priorityCategory || 'none');
+
+  // Synchronize form whenever live user state loads or updates
+  useEffect(() => {
+    if (user) {
+      if (user.name) setPatName(user.name);
+      if (user.email) setEmail(user.email);
+      if (user.phone) setPhone(user.phone);
+      if (user.age) setAge(String(user.age));
+      if (user.priorityCategory) setPriorityCategory(user.priorityCategory);
+    }
+  }, [user]);
 
   const { appointments, analyticsHistory } = db;
 

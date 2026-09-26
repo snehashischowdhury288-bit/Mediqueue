@@ -72,16 +72,67 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Auto-select doctor if none selected
+  // Auto-select doctor based on real logged-in clinician credentials
   useEffect(() => {
-    if (doctors.length > 0) {
-      if (!selectedDoctor || !doctors.some(d => d.doctorCode === selectedDoctor.doctorCode)) {
-        setSelectedDoctor(doctors[0]);
+    if (!doctors || doctors.length === 0) {
+      if (currentUser && currentUser.role === 'doctor') {
+        setSelectedDoctor({
+          doctorId: currentUser.uid,
+          name: currentUser.name || 'Doctor',
+          email: currentUser.email || '',
+          doctorCode: currentUser.doctorCode || 'DOC-288',
+          department: currentUser.department || 'Cardiology',
+          age: currentUser.age || 42,
+          isAvailable: true
+        });
+      } else {
+        setSelectedDoctor(null);
       }
-    } else {
-      setSelectedDoctor(null);
+      return;
     }
-  }, [doctors, selectedDoctor]);
+
+    // 1. If logged-in user is a Doctor, strictly bind to their own real doctor record
+    if (currentUser && (currentUser.role === 'doctor' || currentView === 'doctor')) {
+      const myDoctor = doctors.find(
+        d => (currentUser.uid && d.doctorId === currentUser.uid) ||
+             (currentUser.email && d.email && d.email.toLowerCase() === currentUser.email.toLowerCase()) ||
+             (currentUser.doctorCode && d.doctorCode?.toUpperCase() === currentUser.doctorCode.toUpperCase()) ||
+             (currentUser.name && d.name && d.name.toLowerCase() === currentUser.name.toLowerCase())
+      );
+
+      if (myDoctor) {
+        if (!selectedDoctor || selectedDoctor.doctorId !== myDoctor.doctorId || selectedDoctor.doctorCode !== myDoctor.doctorCode) {
+          setSelectedDoctor(myDoctor);
+        }
+        return;
+      }
+
+      // If user has doctor role but no record in doctors collection yet, auto-register them with their real login info
+      if (currentUser.role === 'doctor') {
+        const uniqueCode = currentUser.doctorCode || `DOC-${Math.floor(100 + Math.random() * 899)}`;
+        registerDoctor({
+          doctorId: currentUser.uid,
+          doctorCode: uniqueCode,
+          name: currentUser.name || 'Doctor',
+          email: currentUser.email || '',
+          department: currentUser.department || 'General Medicine',
+          age: currentUser.age || 40,
+          isAvailable: true
+        }).then(newDoc => {
+          setSelectedDoctor(newDoc);
+        }).catch(err => console.warn('Could not auto-register doctor record:', err));
+        return;
+      }
+    }
+
+    // 2. If already selected a valid doctor, preserve it
+    if (selectedDoctor && doctors.some(d => d.doctorCode === selectedDoctor.doctorCode || d.doctorId === selectedDoctor.doctorId)) {
+      return;
+    }
+
+    // 3. Fallback for Patient / Admin viewing doctor list
+    setSelectedDoctor(doctors[0]);
+  }, [doctors, selectedDoctor, currentUser, currentView, registerDoctor]);
 
   const showToast = msg => {
     setToastMessage(msg);
@@ -383,6 +434,7 @@ export default function App() {
           doctors={doctors}
           onSelectDoctor={setSelectedDoctor}
           db={db}
+          user={currentUser}
           onOpenDoctorRegistration={() => setShowDocRegModal(true)}
         />
       )}

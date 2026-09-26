@@ -1,15 +1,28 @@
 import React, { useState, useEffect } from 'react';
 
-export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOpenDoctorRegistration }) {
+export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user }) {
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
   const [selectedBatchId, setSelectedBatchId] = useState('b1'); // 'b1' (Morning) | 'b2' (Evening)
   const [timerSeconds, setTimerSeconds] = useState(0);
 
   const { appointments, callNext, completeConsultation, skipPatient, markNoShow } = db;
 
+  // Resolve active doctor strictly prioritizing real logged-in clinician credentials
+  const activeDoctor = doctor || (
+    user && user.role === 'doctor' ? {
+      doctorId: user.uid,
+      name: user.name || 'Doctor',
+      email: user.email || '',
+      doctorCode: user.doctorCode || 'DOC-288',
+      department: user.department || 'Cardiology',
+      age: user.age || 42,
+      isAvailable: true
+    } : (doctors && doctors[0])
+  );
+
   // Filter strictly by the logged-in doctor's doctorId or doctorCode
-  const currentDocCode = doctor?.doctorCode?.toUpperCase() || '';
-  const currentDocId = doctor?.doctorId || doctor?.uid || '';
+  const currentDocCode = activeDoctor?.doctorCode?.toUpperCase() || '';
+  const currentDocId = activeDoctor?.doctorId || activeDoctor?.uid || '';
 
   // All active appointments for this doctor (waiting or in_consultation)
   const allActiveDoctorApts = appointments
@@ -196,7 +209,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-                    {doctor.name}
+                    {activeDoctor?.name?.startsWith('Dr.') ? activeDoctor.name : `Dr. ${activeDoctor?.name || 'Practitioner'}`}
                   </h1>
                   <span style={{
                     display: 'inline-flex',
@@ -214,7 +227,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
                   </span>
                 </div>
                 <div style={{ fontSize: '13px', color: '#64748B', marginTop: '4px' }}>
-                  <span>{doctor.department}</span> • Code: <strong className="font-mono text-blue">{doctor.doctorCode}</strong> • Experience: {doctor.age || 42} Yrs
+                  <span>{activeDoctor?.department || 'General Medicine'}</span> • Code: <strong className="font-mono text-blue">{activeDoctor?.doctorCode}</strong> • {activeDoctor?.email ? <span>{activeDoctor.email} • </span> : ''}Experience: {activeDoctor?.age || 42} Yrs
                 </div>
               </div>
             </div>
@@ -225,7 +238,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
                   <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748B' }}>Switch:</span>
                   <select
                     className="doctor-switcher-select"
-                    value={doctor.doctorCode}
+                    value={activeDoctor?.doctorCode || ''}
                     onChange={e => {
                       const d = doctors.find(doc => doc.doctorCode === e.target.value);
                       if (d) onSelectDoctor(d);
@@ -234,7 +247,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
                   >
                     {doctors.map(d => (
                       <option key={d.doctorId} value={d.doctorCode}>
-                        {d.name} ({d.doctorCode})
+                        {d.name} {d.doctorId === user?.uid || (user?.email && d.email === user.email) ? '(You)' : ''} ({d.doctorCode})
                       </option>
                     ))}
                   </select>
