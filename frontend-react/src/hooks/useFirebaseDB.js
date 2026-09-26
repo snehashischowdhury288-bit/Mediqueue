@@ -499,6 +499,29 @@ export function useFirebaseDB() {
   // Priority (elderly, pregnant, emergency) -> Firestore writeBatch transaction
   // inserting into slot 1 and incrementing existing waiting slots by 1.
   // =========================================================================
+  const isPriorityCheck = category => {
+    if (!category) return false;
+    const str = String(category).trim().toLowerCase();
+    return str.includes('elderly') || str.includes('pregnant') || str.includes('emergency');
+  };
+
+  const normalizePriority = category => {
+    if (!category) return 'none';
+    const str = String(category).trim().toLowerCase();
+    if (str.includes('elderly')) return 'elderly';
+    if (str.includes('pregnant')) return 'pregnant';
+    if (str.includes('emergency')) return 'emergency';
+    return 'none';
+  };
+
+  // =========================================================================
+  // 4. APPOINTMENT BOOKING & DYNAMIC PRIORITY PREEMPTION ENGINE
+  // Priority: Elderly, Pregnant Woman, Emergency Patient
+  // Preemption: Immediately takes Slot 1 (or nearest top non-priority slot).
+  // Cascade: Non-priority patients demote down (Slot 1 -> Slot 2 -> Slot 3...).
+  // Spillover: If displacement pushes 5th patient out, moves to Batch 2 Slot 1.
+  // Atomic: Executed via Firestore writeBatch for synchronous consistency.
+  // =========================================================================
   const bookAppointment = useCallback(async booking => {
     const { patientName, patientAge, patientPhone, patientEmail, doctorCode, priorityCategory } = booking;
     if (!patientName || !patientPhone) {
@@ -506,56 +529,62 @@ export function useFirebaseDB() {
     }
 
     const cleanCode = String(doctorCode).trim().toUpperCase();
-    const targetDoc = doctors.find(d => d.doctorCode?.toUpperCase() === cleanCode || d.doctorId === cleanCode || d.id === cleanCode);
+    const targetDoc = doctors.find(
+      d => d.doctorCode?.toUpperCase() === cleanCode || d.doctorId === cleanCode || d.id === cleanCode
+    );
 
     if (!targetDoc) {
       throw new Error(`Doctor code "${doctorCode}" was not found in registered directory.`);
     }
 
+    const docId = targetDoc.doctorId || targetDoc.id;
+    const normalized = normalizePriority(priorityCategory);
+    const isIncomingPriority = isPriorityCheck(normalized);
+
     // Active appointments for this doctor in Firestore
     const activeDocApts = appointments.filter(
-      a => (a.doctorId === targetDoc.doctorId || a.doctorCode?.toUpperCase() === cleanCode) &&
+      a => (a.doctorId === docId || a.doctorCode?.toUpperCase() === cleanCode) &&
            (a.status === 'waiting' || a.status === 'in_consultation')
     );
-
-    const pCatLower = String(priorityCategory || 'none').toLowerCase();
-    let normalizedPriority = 'none';
-    if (pCatLower.includes('elderly')) normalizedPriority = 'elderly';
-    else if (pCatLower.includes('pregnant')) normalizedPriority = 'pregnant';
-    else if (pCatLower.includes('emergency')) normalizedPriority = 'emergency';
-
-    const isPriority = normalizedPriority !== 'none';
-    let targetBatchId = 'b1';
-    let assignedSlot = 1;
 
     const firestoreBatch = writeBatch(db);
     const newAptRef = doc(collection(db, 'appointments'));
 
-    if (!isPriority) {
-      // Standard booking: fill b1 up to 5 slots, then spill over to b2
-      const b1Active = activeDocApts.filter(a => a.batchId === 'b1');
-      if (b1Active.length < 5) {
-        targetBatchId = 'b1';
-        const usedSlots = new Set(b1Active.map(a => a.slotNumber));
-        for (let s = 1; s <= 5; s++) {
-          if (!usedSlots.has(s)) {
-            assignedSlot = s;
-            break;
-          }
+    let targetBatchId = 'b1';
+    let assignedSlot = 1;
+
+    if (!isIncomingPriority) {
+      // -------------------------------------------------------------------
+      // 1. STANDARD PATIENT (Normal / Non-Priority):
+      // Assigns to the first open slot in Batch 1 (slots 1..5).
+      // Spills over to Batch 2 if Batch 1 is full.
+      // -------------------------------------------------------------------
+      const b1Active = activeDocApts.filter(a => (a.batchId || 'b1') === 'b1');
+      const b1Occupied = new Set(b1Active.map(a => a.slotNumber));
+
+      let openSlot = null;
+      for (let s = 1; s <= 5; s++) {
+        if (!b1Occupied.has(s)) {
+          openSlot = s;
+          break;
         }
-        if (!assignedSlot) assignedSlot = b1Active.length + 1;
+      }
+
+      if (openSlot !== null) {
+        targetBatchId = 'b1';
+        assignedSlot = openSlot;
       } else {
-        // Spill over to Batch 2
         targetBatchId = 'b2';
         const b2Active = activeDocApts.filter(a => a.batchId === 'b2');
-        const usedSlots = new Set(b2Active.map(a => a.slotNumber));
+        const b2Occupied = new Set(b2Active.map(a => a.slotNumber));
+        let openSlotB2 = null;
         for (let s = 1; s <= 5; s++) {
-          if (!usedSlots.has(s)) {
-            assignedSlot = s;
+          if (!b2Occupied.has(s)) {
+            openSlotB2 = s;
             break;
           }
         }
-        if (!assignedSlot) assignedSlot = b2Active.length + 1;
+        assignedSlot = openSlotB2 !== null ? openSlotB2 : b2Active.length + 1;
       }
 
       const newApt = {
@@ -565,12 +594,12 @@ export function useFirebaseDB() {
         patientPhone: patientPhone.trim(),
         patientEmail: (patientEmail || '').trim(),
         patientAge: parseInt(patientAge, 10) || 30,
-        doctorId: targetDoc.doctorId || targetDoc.id,
+        doctorId: docId,
         doctorCode: targetDoc.doctorCode,
         department: targetDoc.department,
         batchId: targetBatchId,
         slotNumber: assignedSlot,
-        priorityCategory: normalizedPriority,
+        priorityCategory: normalized,
         status: 'waiting',
         createdAt: serverTimestamp(),
         consultationStartTime: null,
@@ -579,41 +608,144 @@ export function useFirebaseDB() {
 
       firestoreBatch.set(newAptRef, newApt);
       await firestoreBatch.commit();
+
+      // Instant optimistic local update
+      setAppointments(prev => [...prev, { ...newApt, id: newAptRef.id }]);
       return newApt;
+
     } else {
-      // PRIORITY INJECTION VIA FIRESTORE BATCH WRITE:
-      // Insert into slot 1 of Batch 1
+      // -------------------------------------------------------------------
+      // 2. DYNAMIC PRIORITY PREEMPTION (Elderly, Pregnant, Emergency):
+      // - Preempt Slot 1 if occupied by a waiting non-priority patient.
+      // - If Slot 1 already has a Priority patient, assign nearest top slot
+      //   (e.g., Slot 2), displacing the first non-priority patient below.
+      // - Cascade demotion: Slot 1 -> 2 -> 3 -> 4 -> 5.
+      // - If displacement pushes 5th patient out, move to Batch 2 Slot 1.
+      // -------------------------------------------------------------------
       targetBatchId = 'b1';
-      assignedSlot = 1;
+      const b1Active = activeDocApts
+        .filter(a => (a.batchId || 'b1') === 'b1')
+        .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
 
-      // Shift existing waiting appointments in Batch 1 down by 1 position
-      const b1Waiting = activeDocApts.filter(a => a.batchId === 'b1' && a.status === 'waiting');
-      const displacedApts = [];
+      let preemptSlot = null;
+      let shouldDisplace = false;
 
-      b1Waiting.forEach(apt => {
-        const aptDocRef = doc(db, 'appointments', apt.id || apt.appointmentId);
-        const newSlot = apt.slotNumber + 1;
-        if (newSlot > 5) {
-          // Displaced 5th patient spilled into Batch 2 Slot 1
-          displacedApts.push(apt);
-          firestoreBatch.update(aptDocRef, {
-            batchId: 'b2',
-            slotNumber: 1
-          });
-        } else {
-          firestoreBatch.update(aptDocRef, {
-            slotNumber: newSlot
+      // Scan Batch 1 slots from Slot 1 up to Slot 5
+      for (let s = 1; s <= 5; s++) {
+        const aptAtSlot = b1Active.find(a => a.slotNumber === s);
+
+        if (!aptAtSlot) {
+          // Nearest top slot is open: take it directly without displacement
+          preemptSlot = s;
+          shouldDisplace = false;
+          break;
+        }
+
+        if (aptAtSlot.status === 'in_consultation') {
+          // Cannot displace a patient currently inside the consultation suite
+          continue;
+        }
+
+        // Slot is waiting: check if it already belongs to an existing priority patient
+        if (isPriorityCheck(aptAtSlot.priorityCategory)) {
+          // Do not displace existing Elderly, Pregnant, or Emergency patient
+          continue;
+        }
+
+        // Non-priority waiting patient found at top: PREEMPT AND DISPLACE!
+        preemptSlot = s;
+        shouldDisplace = true;
+        break;
+      }
+
+      // Edge case: All 5 slots in Batch 1 are already occupied by priority or active patients
+      if (preemptSlot === null) {
+        targetBatchId = 'b2';
+        const b2Active = activeDocApts
+          .filter(a => a.batchId === 'b2')
+          .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
+
+        for (let s = 1; s <= 5; s++) {
+          const aptAtSlot = b2Active.find(a => a.slotNumber === s);
+          if (!aptAtSlot) {
+            preemptSlot = s;
+            shouldDisplace = false;
+            break;
+          }
+          if (aptAtSlot.status === 'in_consultation') continue;
+          if (isPriorityCheck(aptAtSlot.priorityCategory)) continue;
+
+          preemptSlot = s;
+          shouldDisplace = true;
+          break;
+        }
+
+        if (preemptSlot === null) {
+          preemptSlot = 1;
+          shouldDisplace = true;
+        }
+      }
+
+      assignedSlot = preemptSlot;
+
+      const b1ShiftMap = new Map();
+      const b2ShiftMap = new Map();
+      let displacedSpilloverPatient = null;
+
+      if (shouldDisplace && targetBatchId === 'b1') {
+        // Cascade demote waiting patients at or after preemptSlot in Batch 1
+        const b1WaitingToShift = b1Active.filter(
+          a => a.status === 'waiting' && a.slotNumber >= preemptSlot
+        );
+
+        b1WaitingToShift.forEach(apt => {
+          const aptId = apt.id || apt.appointmentId;
+          const newSlot = apt.slotNumber + 1;
+          const aptRef = doc(db, 'appointments', aptId);
+
+          if (newSlot > 5) {
+            // Displaced 5th patient is pushed out of Batch 1 -> move to Batch 2 Slot 1
+            displacedSpilloverPatient = { ...apt, id: aptId, batchId: 'b2', slotNumber: 1 };
+            firestoreBatch.update(aptRef, {
+              batchId: 'b2',
+              slotNumber: 1
+            });
+          } else {
+            b1ShiftMap.set(aptId, newSlot);
+            firestoreBatch.update(aptRef, {
+              slotNumber: newSlot
+            });
+          }
+        });
+
+        // If a displaced patient moved to Batch 2 Slot 1, cascade shift existing Batch 2 waiting patients
+        if (displacedSpilloverPatient) {
+          const b2Waiting = activeDocApts
+            .filter(a => a.batchId === 'b2' && a.status === 'waiting')
+            .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
+
+          b2Waiting.forEach(apt => {
+            const aptId = apt.id || apt.appointmentId;
+            const newSlot = apt.slotNumber + 1;
+            const aptRef = doc(db, 'appointments', aptId);
+            b2ShiftMap.set(aptId, newSlot);
+            firestoreBatch.update(aptRef, {
+              slotNumber: newSlot
+            });
           });
         }
-      });
-
-      // If a patient spilled over into Batch 2, shift existing Batch 2 waiting appointments down
-      if (displacedApts.length > 0) {
-        const b2Waiting = activeDocApts.filter(a => a.batchId === 'b2' && a.status === 'waiting');
-        b2Waiting.forEach(apt => {
-          const aptDocRef = doc(db, 'appointments', apt.id || apt.appointmentId);
-          firestoreBatch.update(aptDocRef, {
-            slotNumber: apt.slotNumber + 1
+      } else if (shouldDisplace && targetBatchId === 'b2') {
+        // Preemption inside Batch 2
+        const b2WaitingToShift = activeDocApts.filter(
+          a => a.batchId === 'b2' && a.status === 'waiting' && a.slotNumber >= preemptSlot
+        );
+        b2WaitingToShift.forEach(apt => {
+          const aptId = apt.id || apt.appointmentId;
+          const newSlot = apt.slotNumber + 1;
+          const aptRef = doc(db, 'appointments', aptId);
+          b2ShiftMap.set(aptId, newSlot);
+          firestoreBatch.update(aptRef, {
+            slotNumber: newSlot
           });
         });
       }
@@ -625,12 +757,12 @@ export function useFirebaseDB() {
         patientPhone: patientPhone.trim(),
         patientEmail: (patientEmail || '').trim(),
         patientAge: parseInt(patientAge, 10) || 30,
-        doctorId: targetDoc.doctorId || targetDoc.id,
+        doctorId: docId,
         doctorCode: targetDoc.doctorCode,
         department: targetDoc.department,
         batchId: targetBatchId,
-        slotNumber: 1,
-        priorityCategory: normalizedPriority,
+        slotNumber: assignedSlot,
+        priorityCategory: normalized,
         status: 'waiting',
         createdAt: serverTimestamp(),
         consultationStartTime: null,
@@ -639,6 +771,25 @@ export function useFirebaseDB() {
 
       firestoreBatch.set(newAptRef, newApt);
       await firestoreBatch.commit();
+
+      // Immediate synchronous local state update for zero-latency UI re-render
+      setAppointments(prev => {
+        const updated = prev.map(a => {
+          const aId = a.id || a.appointmentId;
+          if (displacedSpilloverPatient && (aId === displacedSpilloverPatient.id || aId === displacedSpilloverPatient.appointmentId)) {
+            return { ...a, batchId: 'b2', slotNumber: 1 };
+          }
+          if (b1ShiftMap.has(aId)) {
+            return { ...a, slotNumber: b1ShiftMap.get(aId) };
+          }
+          if (b2ShiftMap.has(aId)) {
+            return { ...a, slotNumber: b2ShiftMap.get(aId) };
+          }
+          return a;
+        });
+        return [...updated, { ...newApt, id: newAptRef.id }];
+      });
+
       return newApt;
     }
   }, [doctors, appointments, currentUser]);

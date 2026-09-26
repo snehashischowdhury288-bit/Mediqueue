@@ -767,23 +767,45 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                   }
 
                   if (isWaiting) {
+                    const isPriorityPatient = ['elderly', 'pregnant', 'emergency'].some(cat =>
+                      (appointmentOnSlot.priorityCategory || '').toLowerCase().includes(cat)
+                    );
+
                     return (
-                      <div key={slotNum} className="slot-spot-card occupied-waiting">
+                      <div key={slotNum} className={`slot-spot-card occupied-waiting ${isPriorityPatient ? 'priority-highlight' : ''}`}>
                         <div>
                           <div className="slot-top-row">
-                            <span className="slot-tag blue font-mono">
+                            <span className={`slot-tag ${isPriorityPatient ? 'amber' : 'blue'} font-mono`}>
                               SLOT {slotNum}
                             </span>
-                            <span style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              color: '#64748B',
-                              background: '#F1F5F9',
-                              padding: '2px 6px',
-                              borderRadius: '6px'
-                            }}>
-                              WAITING
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {isPriorityPatient && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  fontWeight: 800,
+                                  background: '#FEF3C7',
+                                  color: '#B45309',
+                                  border: '1px solid #FCD34D',
+                                  padding: '2px 6px',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}>
+                                  <i className="fa-solid fa-bolt"></i> PRIORITY
+                                </span>
+                              )}
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                color: '#64748B',
+                                background: '#F1F5F9',
+                                padding: '2px 6px',
+                                borderRadius: '6px'
+                              }}>
+                                WAITING
+                              </span>
+                            </div>
                           </div>
 
                           <h4 className="slot-patient-name" title={appointmentOnSlot.patientName}>

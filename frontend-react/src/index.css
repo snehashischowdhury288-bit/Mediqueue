@@ -3721,4 +3721,22 @@ input, select, textarea {
   color: #94A3B8;
 }
 
+/* Priority Preemption Card Highlight & Badge */
+.slot-spot-card.priority-highlight {
+  border: 2px solid #F59E0B !important;
+  background: linear-gradient(180deg, #FFFBEB 0%, #FFFFFF 100%) !important;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.16) !important;
+}
+
+.slot-tag.amber {
+  background: #FEF3C7 !important;
+  color: #B45309 !important;
+}
+
+.batch-slot-node.priority {
+  border-color: #F59E0B !important;
+  background: #FEF3C7 !important;
+  color: #B45309 !important;
+}
+
 
