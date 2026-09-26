@@ -2,15 +2,9 @@ import React, { useState } from 'react';
 
 export default function AdminDashboard({ onExit, db, onOpenDoctorRegistration }) {
   const [patientFilter, setPatientFilter] = useState('all'); // 'all' | 'waiting' | 'in_consultation' | 'completed'
-  const [purgeConfirm, setPurgeConfirm] = useState(false);
 
-  const { doctors, appointments, analyticsLogs, purgeAllData, getAdminTelemetry } = db;
+  const { doctors, appointments, analyticsLogs, getAdminTelemetry } = db;
   const telemetry = getAdminTelemetry();
-
-  const handlePurge = async () => {
-    await purgeAllData();
-    setPurgeConfirm(false);
-  };
 
   const hasNoData = telemetry.isEmpty;
 
@@ -44,27 +38,6 @@ export default function AdminDashboard({ onExit, db, onOpenDoctorRegistration })
           </div>
 
           <div className="admin-hero-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              type="button"
-              className="btn-secondary-action"
-              onClick={onOpenDoctorRegistration}
-              style={{ padding: '8px 14px', fontSize: '13px' }}
-            >
-              <i className="fa-solid fa-user-plus"></i>
-              <span>Onboard Doctor</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-secondary-action"
-              onClick={() => setPurgeConfirm(true)}
-              style={{ color: '#EF4444', borderColor: '#FCA5A5', padding: '8px 14px', fontSize: '13px' }}
-              title="Reset Firestore collections"
-            >
-              <i className="fa-solid fa-trash-can"></i>
-              <span>Purge Firestore</span>
-            </button>
-
             <button type="button" className="btn-secondary-action" onClick={onExit} style={{ padding: '8px 14px', fontSize: '13px' }}>
               <i className="fa-solid fa-arrow-left"></i>
               <span>Exit Admin Portal</span>
@@ -392,42 +365,7 @@ export default function AdminDashboard({ onExit, db, onOpenDoctorRegistration })
           )}
         </section>
 
-        {/* Confirmation Modal for Database Purge */}
-        {purgeConfirm && (
-          <div className="modal-backdrop">
-            <div className="dialog-box" style={{ maxWidth: '440px' }}>
-              <div className="dialog-header">
-                <h3 className="dialog-title text-red">
-                  <i className="fa-solid fa-triangle-exclamation"></i> Purge Cloud Firestore
-                </h3>
-                <button type="button" className="btn-close-dialog" onClick={() => setPurgeConfirm(false)}>
-                  <i className="fa-solid fa-xmark"></i>
-                </button>
-              </div>
-              <div className="dialog-body">
-                <p style={{ fontSize: '14px', color: '#1E293B', lineHeight: 1.5 }}>
-                  Are you sure you want to permanently delete all documents in <strong>doctors</strong>, <strong>appointments</strong>, and <strong>analytics_logs</strong>?
-                </p>
-                <p style={{ fontSize: '13px', color: '#64748B' }}>
-                  This will reset all hospital OPD queues and telemetry metrics to empty state.
-                </p>
-              </div>
-              <div className="dialog-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn-secondary-action" onClick={() => setPurgeConfirm(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary-action"
-                  style={{ background: '#EF4444', borderColor: '#EF4444' }}
-                  onClick={handlePurge}
-                >
-                  Confirm Full Purge
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+
 
       </div>
     </main>
