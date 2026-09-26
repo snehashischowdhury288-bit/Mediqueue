@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "MediQueue - Smart OPD Queue & Clinical Management Architecture",
   "main": "Mediqueue/server.js",
+  "type": "module",
   "scripts": {
     "start": "node Mediqueue/server.js",
     "dev": "node Mediqueue/server.js"

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import DigitalTokenModal from './DigitalTokenModal';
 import { useWaitTimePrediction } from '../hooks/useWaitTimePrediction';
+import { sendAutomatedPresetEmail } from '../services/emailService';
 
 export default function PatientPortal({
   user,
@@ -97,20 +98,20 @@ export default function PatientPortal({
 
   const estWaitTimeMinutes = prediction.estimatedWaitMins;
 
-  // Alert Trigger: If Patients Ahead === 3, fire both In-App banner and Web3Forms notification
+  // Alert Trigger: If Patients Ahead === 3, fire both In-App banner and Mailtrap notification
   const is3TurnsAway = currentApt && currentApt.status === 'waiting' && patientsAhead === 3;
 
   useEffect(() => {
-    if (is3TurnsAway && !turnAlertDismissed) {
-      fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          access_key: 'SIMULATED_KEY',
-          subject: 'MediQueue Turn Alert: 3 Turns Away!',
-          message: `Attention ${currentApt.patientName}: You are 3 turns away from your consultation with Dr. ${selectedDoctor?.name}. Please head to the consultation suite.`
-        })
-      }).catch(() => {});
+    if (is3TurnsAway && !turnAlertDismissed && currentApt?.patientEmail) {
+      sendAutomatedPresetEmail({
+        alertType: 'three_turns',
+        patientName: currentApt.patientName,
+        patientEmail: currentApt.patientEmail,
+        slotNumber: currentApt.slotNumber,
+        doctorName: selectedDoctor?.name,
+        doctorEmail: selectedDoctor?.email,
+        roomNumber: selectedDoctor?.room || 'Consultation Suite'
+      }).catch(err => console.warn('[Mailtrap Alert] Notice:', err));
     }
   }, [is3TurnsAway, turnAlertDismissed, currentApt, selectedDoctor]);
 

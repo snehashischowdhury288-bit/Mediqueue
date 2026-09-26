@@ -3,8 +3,6 @@ import { calculateDoctorConsultationPace } from '../hooks/useWaitTimePrediction'
 import { sendAutomatedPresetEmail } from '../services/emailService';
 import EmailConfigModal from './EmailConfigModal';
 
-const WEB3FORMS_ACCESS_KEY = '7cbd2b0b-6fba-43be-993c-471ab95e28a4';
-
 export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user }) {
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
   const [selectedBatchId, setSelectedBatchId] = useState('b1'); // 'b1' (Morning) | 'b2' (Evening)
@@ -134,9 +132,8 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
   };
 
   // =========================================================================
-  // AUTOMATED "3 TURNS AWAY" WEB3FORMS NOTIFICATION WORKFLOW
-  // Access Key: 7cbd2b0b-6fba-43be-993c-471ab95e28a4
-  // Endpoint: https://api.web3forms.com/submit
+  // AUTOMATED "3 TURNS AWAY" MAILTRAP NOTIFICATION WORKFLOW
+  // Dispatcher: Mailtrap Email Engine (mailtrap.io)
   // Trigger: Evaluated dynamically whenever a consultation completes or advances
   // =========================================================================
 
@@ -276,7 +273,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     }, 400);
   };
 
-  // On-demand manual "Alert Next Patient" handler: sends automated preset email in background (zero redirect)
+  // On-demand manual "Alert Next Patient" handler: sends automated preset email via Mailtrap (zero redirect)
   const handleManualAlertNext = async () => {
     if (!canAlertNext || !nextPatientInLine || isSendingManualAlert || isAlertSent) return;
 
@@ -288,19 +285,19 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     const doctorDisplayName = activeDoctor?.name || 'Doctor';
     const doctorRoom = activeDoctor?.room || 'Consultation Suite';
 
-    console.log(`[EmailService] Triggering manual automated preset alert to next patient: ${nextPatientEmail}...`);
+    console.log(`[Mailtrap] Triggering manual readiness alert to next patient: ${nextPatientEmail}...`);
 
     // 1. Immediately push high-priority in-app alert directly to patient portal in Firestore
     if (triggerUrgentNextAlert && nextPatientKey) {
       await triggerUrgentNextAlert(nextPatientKey, {
         doctorName: doctorDisplayName,
         slotNumber: targetSlotNumber,
-        message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside ${doctorRoom} and keep your digital token ready.`,
+        message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} is currently consulting the active patient. You are assigned to Slot #${targetSlotNumber} and are directly up next. Please wait immediately outside the consultation door with your digital token ready.`,
         triggeredAt: Date.now()
       });
     }
 
-    // 2. Dispatch automated preset email in the background without user redirect
+    // 2. Dispatch automated preset email via Mailtrap in the background without user redirect
     try {
       const result = await sendAutomatedPresetEmail({
         alertType: 'next_patient',
@@ -319,20 +316,18 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
           patientName: targetPatientName,
           email: nextPatientEmail,
           slotNumber: targetSlotNumber,
-          provider: result.provider,
+          provider: 'Mailtrap',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          notice: result.isWeb3FormsNotice
-            ? 'Dispatched via Web3Forms API. (Tip: Click ⚙️ Email Settings to configure direct EmailJS / your personal key)'
-            : `Delivered via ${result.provider} directly to patient inbox.`
+          message: `Readiness alert sent to ${nextPatientEmail} via Mailtrap`
         });
       } else {
         setManualAlertToast({
           type: 'error',
-          message: `Dispatch notice: ${result.message}`
+          message: `Mailtrap notice: ${result.message}`
         });
       }
     } catch (err) {
-      console.error('[EmailService] Manual alert network error:', err);
+      console.error('[Mailtrap] Manual alert network error:', err);
       setManualAlertToast({
         type: 'error',
         message: `Network error: ${err.message}`
@@ -751,7 +746,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                   {isSendingManualAlert ? (
                     <>
                       <i className="fa-solid fa-spinner fa-spin"></i>
-                      <span>Sending Alert...</span>
+                      <span>Sending via Mailtrap...</span>
                     </>
                   ) : isAlertSent ? (
                     <>
@@ -884,7 +879,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                       fontSize: '14px'
                     }}>
                       {manualAlertToast.type === 'success'
-                        ? `Immediate readiness email sent to ${manualAlertToast.patientName} (${manualAlertToast.email})`
+                        ? `Readiness alert sent to ${manualAlertToast.email} via Mailtrap`
                         : 'Error Dispatching Alert Email'}
                     </div>
                     <div style={{
@@ -892,7 +887,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                       color: manualAlertToast.type === 'success' ? '#047857' : '#B91C1C'
                     }}>
                       {manualAlertToast.type === 'success'
-                        ? `Assigned to Slot #${manualAlertToast.slotNumber} • Dispatched at ${manualAlertToast.time}. ${manualAlertToast.notice || ''}`
+                        ? `Assigned to Slot #${manualAlertToast.slotNumber} (${manualAlertToast.patientName}) • Dispatched via Mailtrap at ${manualAlertToast.time}`
                         : manualAlertToast.message}
                     </div>
                   </div>
@@ -947,7 +942,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                       Automated "3-turns-away" email alert sent to {emailAlertBanner.patientName} (Slot #{emailAlertBanner.slotNumber})
                     </div>
                     <div style={{ fontSize: '12px', color: '#047857' }}>
-                      Recipient: <strong>{emailAlertBanner.email}</strong> • Dispatched via Web3Forms Cloud at {emailAlertBanner.time}
+                      Recipient: <strong>{emailAlertBanner.email}</strong> • Dispatched via Mailtrap Engine at {emailAlertBanner.time}
                     </div>
                   </div>
                 </div>

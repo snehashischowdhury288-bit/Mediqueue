@@ -1876,28 +1876,26 @@
         // 1. In-App Banner & Toast alert
         showToast('Attention: You are 3 turns away from your consultation. Please approach the waiting area.');
 
-        // 2. Client-side POST request to Web3Forms
-        sendWeb3FormsNotification(myApt, doctor);
+        // 2. Client-side request to Mailtrap
+        sendMailtrapNotification(myApt, doctor);
       }
     }
   }
 
-  async function sendWeb3FormsNotification(appointment, doctor) {
+  async function sendMailtrapNotification(appointment, doctor) {
     if (!appointment || !appointment.patientEmail) return;
 
     try {
       const payload = {
-        access_key: 'c039dbb7-d1a2-4a7b-a0d0-087e85c136a8',
-        subject: `MediQueue Alert: You are 3 turns away from your consultation with ${doctor.name}`,
-        from_name: 'MediQueue OPD Smart System',
         to: appointment.patientEmail,
-        email: appointment.patientEmail,
-        message: `Attention: You are 3 turns away from your consultation. Please approach the waiting area. Attending Doctor: ${doctor.name} (${doctor.specialization}), Location: ${doctor.room || 'Suite 304, Wing C'}. Assigned Slot: Slot ${appointment.slotNumber} (${appointment.batchName}).`
+        patientName: appointment.patientName || 'Patient',
+        subject: `MediQueue Alert: You are 3 turns away from your consultation with ${doctor.name}`,
+        text: `Attention: You are 3 turns away from your consultation. Please approach the waiting area. Attending Doctor: ${doctor.name} (${doctor.specialization}), Location: ${doctor.room || 'Suite 304, Wing C'}. Assigned Slot: Slot ${appointment.slotNumber} (${appointment.batchName}).`
       };
 
-      console.log('Dispatching Web3Forms 3-Turns-Away Notification:', payload);
+      console.log('Dispatching Mailtrap 3-Turns-Away Notification:', payload);
 
-      const response = await fetch('https://api.web3forms.com/submit', {
+      const response = await fetch('/api/mailtrap', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1907,10 +1905,10 @@
       });
 
       const result = await response.json();
-      console.log('Web3Forms response:', result);
-      showToast(`Notification email dispatched to ${appointment.patientEmail}`);
+      console.log('Mailtrap response:', result);
+      showToast(`Notification email dispatched to ${appointment.patientEmail} via Mailtrap`);
     } catch (err) {
-      console.warn('Web3Forms notification dispatch error (simulated/offline):', err);
+      console.warn('Mailtrap notification dispatch error (simulated/offline):', err);
     }
   }
 

@@ -853,6 +853,150 @@ app.post('/api/demo/populate', (req, res) => {
 });
 
 // =============================================================================
+// MAILTRAP EMAIL DISPATCH API
+// =============================================================================
+const MAILTRAP_TOKEN = process.env.MAILTRAP_TOKEN || 'e0003d35e29d71e96224530855a6c244';
+const MAILTRAP_SENDER = process.env.MAILTRAP_SENDER || 'mailtrap@demomailtrap.com';
+
+app.post('/api/mailtrap/send', async (req, res) => {
+  try {
+    const {
+      to,
+      patientName = 'Patient',
+      subject = 'MediQueue Urgent: You are the NEXT patient in line',
+      text,
+      html,
+      sender = MAILTRAP_SENDER,
+      token = MAILTRAP_TOKEN
+    } = req.body || {};
+
+    if (!to || !to.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Valid recipient email required' });
+    }
+
+    console.log(`[Mailtrap Backend] Dispatching email to: ${to} for ${patientName}...`);
+
+    // 1. Try Mailtrap Production Sending API
+    try {
+      const prodRes = await fetch('https://send.api.mailtrap.io/api/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: { email: sender, name: 'MediQueue Hospital System' },
+          to: [{ email: to, name: patientName }],
+          subject,
+          text,
+          html,
+          category: 'Queue Readiness Alert'
+        })
+      });
+
+      if (prodRes.ok) {
+        const prodData = await prodRes.json();
+        console.log('[Mailtrap Backend] Production dispatch succeeded:', prodData);
+        return res.json({
+          success: true,
+          mode: 'production',
+          message: `Readiness alert sent to ${to} via Mailtrap`,
+          data: prodData
+        });
+      }
+    } catch (prodErr) {
+      console.warn('[Mailtrap Backend] Production API bypass:', prodErr.message);
+    }
+
+    // 2. Discover Mailtrap Sandbox Inbox or use default
+    let inboxId = 4929850;
+    try {
+      const inboxesRes = await fetch('https://mailtrap.io/api/inboxes', {
+        headers: { 'Api-Token': token }
+      });
+      if (inboxesRes.ok) {
+        const inboxes = await inboxesRes.json();
+        if (inboxes && inboxes.length > 0 && inboxes[0].id) {
+          inboxId = inboxes[0].id;
+        }
+      }
+    } catch (inboxErr) {
+      console.warn('[Mailtrap Backend] Inbox lookup note:', inboxErr.message);
+    }
+
+    // 3. Dispatch through Mailtrap Sandbox API
+    const sandboxRes = await fetch(`https://sandbox.api.mailtrap.io/api/send/${inboxId}`, {
+      method: 'POST',
+      headers: {
+        'Api-Token': token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: { email: sender, name: 'MediQueue Hospital System' },
+        to: [{ email: to, name: patientName }],
+        subject,
+        text,
+        html,
+        category: 'Queue Readiness Alert'
+      })
+    });
+
+    const sandboxData = await sandboxRes.json().catch(() => null);
+
+    if (sandboxRes.ok && sandboxData?.success !== false) {
+      console.log('[Mailtrap Backend] Sandbox dispatch succeeded:', sandboxData);
+      return res.json({
+        success: true,
+        mode: 'sandbox',
+        inboxId,
+        message: `Readiness alert sent to ${to} via Mailtrap`,
+        data: sandboxData
+      });
+    }
+
+    // 4. Nodemailer SMTP Fallback
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: 'sandbox.smtp.mailtrap.io',
+        port: 2525,
+        auth: {
+          user: '912f8b2572941d',
+          pass: '798ddfbee9d7c7'
+        }
+      });
+
+      const info = await transporter.sendMail({
+        from: `"MediQueue Hospital System" <${sender}>`,
+        to,
+        subject,
+        text,
+        html
+      });
+
+      console.log('[Mailtrap Backend] Nodemailer dispatch succeeded:', info.messageId);
+      return res.json({
+        success: true,
+        mode: 'nodemailer_smtp',
+        message: `Readiness alert sent to ${to} via Mailtrap`,
+        messageId: info.messageId
+      });
+    } catch (smtpErr) {
+      console.error('[Mailtrap Backend] Nodemailer error:', smtpErr.message);
+    }
+
+    return res.status(502).json({
+      success: false,
+      message: 'Failed to deliver message via Mailtrap endpoints'
+    });
+  } catch (err) {
+    console.error('[Mailtrap Backend Error]:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
+// =============================================================================
 // SOCKET.IO REAL-TIME SUBSCRIPTION ENGINE
 // =============================================================================
 io.on('connection', socket => {

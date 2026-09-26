@@ -66,16 +66,21 @@ export function useQueueSocket(initialDoctorId = null) {
       console.log('[Socket.IO] turn_alert received:', alertData);
       setTurnAlert(alertData);
 
-      // Trigger client-side POST to Web3Forms if payload is provided
-      if (alertData.web3formsPayload) {
-        fetch('https://api.web3forms.com/submit', {
+      // Trigger Mailtrap alert dispatch if payload is provided
+      if (alertData.email || alertData.patientEmail) {
+        fetch('/api/mailtrap', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(alertData.web3formsPayload)
+          body: JSON.stringify({
+            to: alertData.email || alertData.patientEmail,
+            patientName: alertData.patientName || 'Patient',
+            subject: 'MediQueue Urgent Update: You are 3 turns away from your consultation',
+            text: alertData.message || `Attention ${alertData.patientName}: You are 3 turns away from your consultation.`
+          })
         })
           .then(res => res.json())
-          .then(data => console.log('[Web3Forms Alert] Dispatched successfully:', data))
-          .catch(err => console.warn('[Web3Forms Alert] Dispatch simulated/offline:', err));
+          .then(data => console.log('[Mailtrap Alert] Dispatched successfully:', data))
+          .catch(err => console.warn('[Mailtrap Alert] Dispatch notice:', err));
       }
     });
 
