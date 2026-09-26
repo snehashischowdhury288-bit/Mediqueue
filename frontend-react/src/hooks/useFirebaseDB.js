@@ -1007,6 +1007,29 @@ export function useFirebaseDB() {
     }
   }, []);
 
+  // Dispatch direct "Next Patient in Line" summons alert to Firestore appointment
+  const triggerUrgentNextAlert = useCallback(async (appointmentId, alertData) => {
+    if (!appointmentId) return;
+    setAppointments(prev => prev.map(a => {
+      if (a.id === appointmentId || a.appointmentId === appointmentId) {
+        return { ...a, urgentNextAlert: alertData };
+      }
+      return a;
+    }));
+
+    try {
+      const aptDocRef = doc(db, 'appointments', appointmentId);
+      await updateDoc(aptDocRef, {
+        urgentNextAlert: {
+          ...alertData,
+          triggeredAt: serverTimestamp()
+        }
+      });
+    } catch (err) {
+      console.warn('[Firestore] Failed to persist urgentNextAlert:', err);
+    }
+  }, []);
+
   // Purge all collections from Firestore
   const purgeAllData = useCallback(async () => {
     try {
@@ -1160,6 +1183,7 @@ export function useFirebaseDB() {
     skipPatient,
     markNoShow,
     markNotificationSent,
+    triggerUrgentNextAlert,
     purgeAllData,
     getAdminTelemetry,
     calculateDoctorConsultationPace,

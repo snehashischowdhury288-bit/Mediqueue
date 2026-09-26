@@ -13,7 +13,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
   const [manualAlertSentSet, setManualAlertSentSet] = useState(new Set());
   const sentAlertsRef = useRef(new Set());
 
-  const { appointments, callNext, completeConsultation, skipPatient, markNoShow, markNotificationSent } = db;
+  const { appointments, callNext, completeConsultation, skipPatient, markNoShow, markNotificationSent, triggerUrgentNextAlert } = db;
 
   // Resolve active doctor strictly prioritizing real logged-in clinician credentials
   const activeDoctor = doctor || (
@@ -298,12 +298,24 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
       access_key: WEB3FORMS_ACCESS_KEY,
       to_email: nextPatientEmail,
       email: nextPatientEmail,
+      from_name: 'MediQueue Hospital System',
+      name: targetPatientName,
       subject: 'MediQueue Urgent Alert: You are the Next Patient in Line',
-      name: 'MediQueue Hospital System',
-      message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside the examination room and keep your digital token ready.`
+      message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside the examination room and keep your digital token ready.`,
+      replyto: activeDoctor?.email || 'support@mediqueue.com'
     };
 
     console.log(`[Web3Forms] Triggering manual alert to next patient: ${nextPatientEmail}...`);
+
+    // 1. Immediately push high-priority alert directly to patient portal in Firestore
+    if (triggerUrgentNextAlert && nextPatientKey) {
+      await triggerUrgentNextAlert(nextPatientKey, {
+        doctorName: doctorDisplayName,
+        slotNumber: targetSlotNumber,
+        message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside the examination room and keep your digital token ready.`,
+        triggeredAt: Date.now()
+      });
+    }
 
     try {
       const response = await fetch('https://api.web3forms.com/submit', {

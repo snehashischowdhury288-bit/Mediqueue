@@ -19,6 +19,7 @@ export default function PatientPortal({
   const [typedDoctorCode, setTypedDoctorCode] = useState('');
   const [codeLookupError, setCodeLookupError] = useState(null);
   const [turnAlertDismissed, setTurnAlertDismissed] = useState(false);
+  const [urgentNextAlertDismissed, setUrgentNextAlertDismissed] = useState(false);
 
   // Booking Form State - bound to authenticated patient info
   const [patName, setPatName] = useState(user?.name || '');
@@ -321,6 +322,40 @@ export default function PatientPortal({
             )}
           </div>
         </section>
+
+        {/* On-Demand Direct Clinician "Next in Line" Alert Banner */}
+        {currentApt?.urgentNextAlert && !urgentNextAlertDismissed && (
+          <section className="patient-turn-alert-banner" style={{
+            background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
+            border: '2px solid #3B82F6',
+            boxShadow: '0 8px 24px rgba(59, 130, 246, 0.25)',
+            marginBottom: '20px'
+          }}>
+            <div className="alert-icon-col" style={{ background: '#3B82F6', color: '#FFF' }}>
+              <i className="fa-solid fa-bullhorn"></i>
+            </div>
+            <div className="alert-content-col">
+              <div className="alert-kicker font-mono" style={{ color: '#1D4ED8' }}>
+                <i className="fa-solid fa-bell"></i> DIRECT CLINICIAN CALL • YOU ARE NEXT IN LINE
+              </div>
+              <h3 className="alert-heading" style={{ color: '#1E3A8A' }}>
+                Dr. {currentApt.urgentNextAlert.doctorName || selectedDoctor?.name || 'Doctor'} has summoned you to the consultation door.
+              </h3>
+              <p className="alert-message" style={{ color: '#1E40AF' }}>
+                {currentApt.urgentNextAlert.message || 'You are directly NEXT in line. Please proceed immediately to the examination suite and keep your digital token ready.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss-alert"
+              style={{ background: '#3B82F6', color: '#FFF' }}
+              onClick={() => setUrgentNextAlertDismissed(true)}
+              title="Acknowledge Alert"
+            >
+              <i className="fa-solid fa-check"></i>
+            </button>
+          </section>
+        )}
 
         {/* 3-Turns-Away Notification Banner */}
         {is3TurnsAway && !turnAlertDismissed && (
