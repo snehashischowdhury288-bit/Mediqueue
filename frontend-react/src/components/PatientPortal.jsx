@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import DigitalTokenModal from './DigitalTokenModal';
+import { useWaitTimePrediction } from '../hooks/useWaitTimePrediction';
 
 export default function PatientPortal({
   user,
@@ -73,6 +74,16 @@ export default function PatientPortal({
           (user?.uid && a.patientId === user.uid))
   );
 
+  // Dynamic Wait-Time Prediction Engine Model Hook
+  const prediction = useWaitTimePrediction({
+    doctor: selectedDoctor,
+    appointment: currentApt,
+    appointments,
+    historicalConsultations: db.historicalConsultations || [],
+    analyticsLogs: db.analyticsLogs || [],
+    refreshIntervalMs: 5000
+  });
+
   // Calculate live queue position:
   const currentBatchId = currentApt ? currentApt.batchId : 'b1';
   const batchApts = activeQueue.filter(a => a.batchId === currentBatchId);
@@ -83,13 +94,7 @@ export default function PatientPortal({
       : batchApts.filter(a => a.status === 'waiting' && a.slotNumber < currentApt.slotNumber).length
     : 0;
 
-  // Dynamic Estimated Wait Time:
-  const deptHistory = (analyticsHistory || []).filter(h => h.department === selectedDoctor?.department);
-  const avgDuration = deptHistory.length > 0
-    ? Math.round(deptHistory.reduce((s, h) => s + (h.durationMinutes || 0), 0) / deptHistory.length)
-    : 10;
-
-  const estWaitTimeMinutes = currentApt?.status === 'in_consultation' ? 0 : patientsAhead * (avgDuration || 10);
+  const estWaitTimeMinutes = prediction.estimatedWaitMins;
 
   // Alert Trigger: If Patients Ahead === 3, fire both In-App banner and Web3Forms notification
   const is3TurnsAway = currentApt && currentApt.status === 'waiting' && patientsAhead === 3;
@@ -428,17 +433,46 @@ export default function PatientPortal({
                   : `Next Available: Slot ${((activeQueue.length) % 5) + 1}`}
               </div>
 
-              <div className="wait-calc-box">
-                <i className="fa-regular fa-clock"></i>
-                <span>
-                  Estimated Wait Time:{' '}
-                  <strong className="font-mono text-blue">
-                    {currentApt?.status === 'in_consultation'
-                      ? '0 min (In Examination Room)'
-                      : `~${estWaitTimeMinutes} mins (${patientsAhead} ahead * ${avgDuration || 10}m)`}
-                  </strong>
-                </span>
+              <div className="wait-calc-box" style={{ padding: '12px 16px', borderRadius: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <i className="fa-solid fa-clock-rotate-left" style={{ color: '#3E69FE', fontSize: '16px' }}></i>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#1E293B' }}>
+                    Estimated Wait Time:{' '}
+                    <strong className="font-mono text-blue" style={{ fontSize: '14px' }}>
+                      {currentApt?.status === 'in_consultation'
+                        ? '0 min (In Examination Room)'
+                        : `~${estWaitTimeMinutes} mins`}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px', fontWeight: 600 }}>
+                    (Based on Dr. {selectedDoctor?.name || 'Assigned Clinician'}'s live consultation pace of {prediction.averageConsultationTime} mins/patient)
+                  </div>
+                </div>
               </div>
+
+              {/* Real-time Dynamic Breakdown */}
+              {currentApt && currentApt.status === 'waiting' && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  background: '#EFF6FF',
+                  fontSize: '11px',
+                  color: '#2563EB',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 600
+                }}>
+                  <i className="fa-solid fa-microchip"></i>
+                  <span>
+                    {prediction.inConsultationPatient
+                      ? `Active: ~${prediction.currentPatientRemainingMins}m in suite + (${prediction.waitingAheadCount} ahead × ${prediction.averageConsultationTime}m)`
+                      : `${prediction.waitingAheadCount} ahead in line × ${prediction.averageConsultationTime}m pace`}
+                    {prediction.isTrained ? ` • Trained on ${prediction.completedTodayCount} visits today` : ' • Initial pace baseline'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="sm-card-footer">

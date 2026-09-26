@@ -184,6 +184,29 @@ export default function AdminDashboard({ onExit, db, onOpenDoctorRegistration })
             </div>
           </div>
 
+          {/* Card 4: Average Consultation Pace (Dynamic Model) */}
+          <div className="admin-metric-card" style={{ borderLeft: '4px solid #8B5CF6' }}>
+            <div className="admin-card-header">
+              <div className="metric-icon-bubble purple">
+                <i className="fa-solid fa-microchip"></i>
+              </div>
+              <span className="metric-label font-mono">DYNAMIC PACE PREDICTION MODEL</span>
+            </div>
+            <div className="admin-metric-number font-mono text-purple" style={{ color: '#8B5CF6' }}>
+              {telemetry.overallConsultationPace || 10}m
+            </div>
+            <div className="admin-metric-sub" style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B', marginBottom: '8px' }}>
+              Average Consultation Pace: <span className="font-mono" style={{ color: '#8B5CF6' }}>{telemetry.overallConsultationPace || 10} mins/patient</span>
+              <span style={{ display: 'block', fontSize: '12px', color: '#64748B', fontWeight: 500, marginTop: '2px' }}>
+                (Trained on {telemetry.overallTrainedConsultationsToday || 0} completed consultation{telemetry.overallTrainedConsultationsToday === 1 ? '' : 's'} today)
+              </span>
+            </div>
+            <div style={{ marginTop: 'auto', background: '#F8FAFC', borderRadius: '10px', padding: '8px 12px', fontSize: '11.5px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <i className="fa-solid fa-bolt" style={{ color: '#8B5CF6' }}></i>
+              <span>Live moving average self-corrects upon each consultation completion</span>
+            </div>
+          </div>
+
         </section>
 
         {/* 1. Active Doctors Registry */}
@@ -223,6 +246,7 @@ export default function AdminDashboard({ onExit, db, onOpenDoctorRegistration })
                     <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Status</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>In Examination</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Waiting Queue</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Live Pace (Model)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -256,6 +280,14 @@ export default function AdminDashboard({ onExit, db, onOpenDoctorRegistration })
                       </td>
                       <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontWeight: 700 }}>
                         {doc.waitingCount} Waiting
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: '12.5px' }}>
+                        <span className="font-mono text-purple" style={{ fontWeight: 700 }}>
+                          ~{doc.consultationPace || 10}m/patient
+                        </span>{' '}
+                        <span style={{ color: '#64748B', fontSize: '11px' }}>
+                          ({doc.trainedTodayCount || 0} today)
+                        </span>
                       </td>
                     </tr>
                   ))}

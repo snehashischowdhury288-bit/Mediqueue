@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { calculateDoctorConsultationPace } from '../hooks/useWaitTimePrediction';
 
 const WEB3FORMS_ACCESS_KEY = '7cbd2b0b-6fba-43be-993c-471ab95e28a4';
 
@@ -68,6 +69,15 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
       const timeB = b.consultationEndTime?.toDate ? b.consultationEndTime.toDate() : new Date(b.consultationEndTime || 0);
       return timeB - timeA;
     });
+
+  // Dynamic Consultation Pace Model trained on historical data
+  const paceData = calculateDoctorConsultationPace({
+    doctorId: currentDocId,
+    doctorCode: currentDocCode,
+    historicalConsultations: db.historicalConsultations || [],
+    appointments,
+    analyticsLogs: db.analyticsLogs || []
+  });
 
   // Stopwatch timer for active consultation
   useEffect(() => {
@@ -410,6 +420,72 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                   </select>
                 </div>
               )}
+            </div>
+          </div>
+        </section>
+
+        {/* Dynamic Wait-Time Prediction Engine Live Metric Card */}
+        <section className="doctor-prediction-metric-banner" style={{
+          background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%)',
+          border: '1.5px solid #BFDBFE',
+          borderRadius: '16px',
+          padding: '14px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          marginBottom: '20px',
+          boxShadow: '0 2px 8px rgba(62, 105, 254, 0.08)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: '#3E69FE',
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '20px',
+              boxShadow: '0 4px 10px rgba(62, 105, 254, 0.25)'
+            }}>
+              <i className="fa-solid fa-chart-line"></i>
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="font-mono" style={{ fontSize: '11px', fontWeight: 800, color: '#3E69FE', letterSpacing: '0.5px' }}>
+                  AI WAIT-TIME PREDICTION MODEL
+                </span>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  background: paceData.isTrained ? '#DCFCE7' : '#FEF3C7',
+                  color: paceData.isTrained ? '#15803D' : '#B45309'
+                }}>
+                  {paceData.isTrained ? '● Trained Rolling Average' : '○ Initial Baseline (10m)'}
+                </span>
+              </div>
+              <h4 style={{ margin: '3px 0 0', fontSize: '15px', fontWeight: 800, color: '#1E293B' }}>
+                Average Consultation Pace: <span className="font-mono text-blue">{paceData.averageConsultationTime} mins/patient</span>{' '}
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748B' }}>
+                  (Trained on {paceData.completedTodayCount} completed consultation{paceData.completedTodayCount === 1 ? '' : 's'} today)
+                </span>
+              </h4>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '11.5px', color: '#64748B', fontWeight: 700, display: 'block' }}>
+                TOTAL ESTIMATED QUEUE CLEAR TIME
+              </span>
+              <strong className="font-mono text-blue" style={{ fontSize: '16px' }}>
+                ~{Math.round(waitingPatients.length * paceData.averageConsultationTime)} mins ({waitingPatients.length} Waiting)
+              </strong>
             </div>
           </div>
         </section>

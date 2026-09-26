@@ -38,6 +38,12 @@ import {
   onAuthStateChanged,
   getFriendlyAuthErrorMessage
 } from '../firebase';
+import {
+  calculateDoctorConsultationPace,
+  calculatePatientWaitTime,
+  getEpochTimestamp,
+  isCompletedToday
+} from './useWaitTimePrediction';
 
 export function useFirebaseDB() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -47,6 +53,7 @@ export function useFirebaseDB() {
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [analyticsLogs, setAnalyticsLogs] = useState([]);
+  const [historicalConsultations, setHistoricalConsultations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [dbError, setDbError] = useState(null);
 
@@ -54,7 +61,7 @@ export function useFirebaseDB() {
   const unsubsRef = useRef([]);
 
   // =========================================================================
-  // 1. REAL-TIME FIRESTORE SUBSCRIPTIONS (doctors, appointments, analytics_logs, users)
+  // 1. REAL-TIME FIRESTORE SUBSCRIPTIONS (doctors, appointments, analytics_logs, historicalConsultations, users)
   // =========================================================================
   useEffect(() => {
     let isMounted = true;
@@ -114,7 +121,24 @@ export function useFirebaseDB() {
         }
       );
 
-      // 4. Users Collection Listener (for Admin overview)
+      // 4. Historical Consultations Listener (Wait-Time Prediction Model Training Data)
+      const histCol = collection(db, 'historicalConsultations');
+      const unsubHist = onSnapshot(
+        histCol,
+        snapshot => {
+          if (!isMounted) return;
+          const histData = snapshot.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          }));
+          setHistoricalConsultations(histData);
+        },
+        error => {
+          console.warn('[Firestore] historicalConsultations fallback/offline:', error.message);
+        }
+      );
+
+      // 5. Users Collection Listener (for Admin overview)
       const usersCol = collection(db, 'users');
       const unsubUsers = onSnapshot(
         usersCol,
@@ -131,7 +155,7 @@ export function useFirebaseDB() {
         }
       );
 
-      unsubsRef.current = [unsubDoctors, unsubAppointments, unsubLogs, unsubUsers];
+      unsubsRef.current = [unsubDoctors, unsubAppointments, unsubLogs, unsubHist, unsubUsers];
     } catch (err) {
       console.error('[Firestore] Initialization error:', err);
     }
@@ -815,11 +839,26 @@ export function useFirebaseDB() {
 
     const targetPatient = waitingForDoc[0];
     const targetRef = doc(db, 'appointments', targetPatient.id || targetPatient.appointmentId);
+    const consultationStartTime = Date.now();
 
-    await updateDoc(targetRef, {
-      status: 'in_consultation',
-      consultationStartTime: serverTimestamp()
-    });
+    // Optimistically update local appointments state for 0ms reactivity
+    setAppointments(prev => prev.map(a => {
+      const aId = a.id || a.appointmentId;
+      const tId = targetPatient.id || targetPatient.appointmentId;
+      if (aId === tId) {
+        return { ...a, status: 'in_consultation', consultationStartTime };
+      }
+      return a;
+    }));
+
+    try {
+      await updateDoc(targetRef, {
+        status: 'in_consultation',
+        consultationStartTime: consultationStartTime
+      });
+    } catch (err) {
+      console.warn('[Firestore] Error updating consultationStartTime in callNext:', err);
+    }
 
     return targetPatient;
   }, [appointments]);
@@ -837,40 +876,82 @@ export function useFirebaseDB() {
 
     const targetRef = doc(db, 'appointments', inConsult.id || inConsult.appointmentId);
 
-    // Compute duration in minutes
-    let durationMinutes = 9;
-    if (inConsult.consultationStartTime) {
-      const startTime = inConsult.consultationStartTime.toDate
-        ? inConsult.consultationStartTime.toDate()
-        : (inConsult.consultationStartTime.seconds
-            ? new Date(inConsult.consultationStartTime.seconds * 1000)
-            : new Date(inConsult.consultationStartTime));
-      const diffMs = Date.now() - (isNaN(startTime.getTime()) ? Date.now() : startTime.getTime());
-      durationMinutes = Math.max(1, Math.round(diffMs / 60000)) || 8;
-    }
+    // Exact timestamps according to specification:
+    // consultationStartTime = stored start timestamp
+    // consultationEndTime = Date.now()
+    const consultationEndTime = Date.now();
+    const startTimeMs = getEpochTimestamp(inConsult.consultationStartTime) || (consultationEndTime - 10 * 60000);
 
-    const firestoreBatch = writeBatch(db);
+    // durationMinutes = Math.round((consultationEndTime - consultationStartTime) / 60000)
+    const rawElapsedMinutes = Math.round((consultationEndTime - startTimeMs) / 60000);
+    // Ensure durationMinutes is at least 1 min for fast testing cycles
+    const durationMinutes = Math.max(1, rawElapsedMinutes);
 
-    // Mark current appointment completed
-    firestoreBatch.update(targetRef, {
-      status: 'completed',
-      consultationEndTime: serverTimestamp()
-    });
-
-    // Write record to analytics_logs
-    const logRef = doc(collection(db, 'analytics_logs'));
-    firestoreBatch.set(logRef, {
+    const historyRecord = {
       appointmentId: inConsult.appointmentId || inConsult.id,
       doctorId: inConsult.doctorId || '',
-      doctorCode: inConsult.doctorCode,
-      department: inConsult.department,
+      doctorCode: inConsult.doctorCode || cleanKey,
+      department: inConsult.department || '',
+      patientName: inConsult.patientName || '',
+      consultationStartTime: startTimeMs,
+      consultationEndTime: consultationEndTime,
       durationMinutes: durationMinutes,
-      status: 'completed',
-      completedAt: serverTimestamp()
-    });
+      date: new Date(consultationEndTime).toISOString().split('T')[0]
+    };
 
-    await firestoreBatch.commit();
-    return inConsult;
+    // Optimistically update local state for instantaneous prediction model retraining
+    setHistoricalConsultations(prev => [...prev, historyRecord]);
+    setAppointments(prev => prev.map(a => {
+      const aId = a.id || a.appointmentId;
+      const tId = inConsult.id || inConsult.appointmentId;
+      if (aId === tId) {
+        return {
+          ...a,
+          status: 'completed',
+          consultationStartTime: startTimeMs,
+          consultationEndTime,
+          durationMinutes
+        };
+      }
+      return a;
+    }));
+
+    try {
+      const firestoreBatch = writeBatch(db);
+
+      // Mark current appointment completed with exact timestamps and duration
+      firestoreBatch.update(targetRef, {
+        status: 'completed',
+        consultationStartTime: startTimeMs,
+        consultationEndTime: consultationEndTime,
+        durationMinutes: durationMinutes
+      });
+
+      // Save into historicalConsultations collection tagged with specific doctorId and department
+      const histRef = doc(collection(db, 'historicalConsultations'));
+      firestoreBatch.set(histRef, {
+        ...historyRecord,
+        createdAt: serverTimestamp()
+      });
+
+      // Write record to analytics_logs
+      const logRef = doc(collection(db, 'analytics_logs'));
+      firestoreBatch.set(logRef, {
+        appointmentId: inConsult.appointmentId || inConsult.id,
+        doctorId: inConsult.doctorId || '',
+        doctorCode: inConsult.doctorCode || cleanKey,
+        department: inConsult.department || '',
+        durationMinutes: durationMinutes,
+        status: 'completed',
+        completedAt: serverTimestamp()
+      });
+
+      await firestoreBatch.commit();
+    } catch (err) {
+      console.warn('[Firestore] Error committing completeConsultation batch:', err);
+    }
+
+    return { ...inConsult, durationMinutes, consultationEndTime };
   }, [appointments]);
 
   const skipPatient = useCallback(async appointmentId => {
@@ -940,12 +1021,16 @@ export function useFirebaseDB() {
       const logSnaps = await getDocs(collection(db, 'analytics_logs'));
       logSnaps.docs.forEach(d => batch.delete(d.ref));
 
+      const histSnaps = await getDocs(collection(db, 'historicalConsultations'));
+      histSnaps.docs.forEach(d => batch.delete(d.ref));
+
       await batch.commit();
     } catch (e) {
       console.warn('[Firestore] Purge all fallback:', e);
       setDoctors([]);
       setAppointments([]);
       setAnalyticsLogs([]);
+      setHistoricalConsultations([]);
     }
   }, []);
 
@@ -957,6 +1042,13 @@ export function useFirebaseDB() {
     const inConsultApts = appointments.filter(a => a.status === 'in_consultation');
     const completedApts = appointments.filter(a => a.status === 'completed');
     const totalQueueLength = waitingApts.length;
+
+    // Overall dynamic consultation pace across all clinicians today
+    const overallPaceData = calculateDoctorConsultationPace({
+      historicalConsultations,
+      appointments,
+      analyticsLogs
+    });
 
     const deptSet = new Set();
     doctors.forEach(d => deptSet.add(d.department));
@@ -1002,11 +1094,21 @@ export function useFirebaseDB() {
         ? Math.round(docHistory.reduce((sum, h) => sum + (h.durationMinutes || 0), 0) / docHistory.length)
         : (overallAvgWait || 10);
 
+      const docPace = calculateDoctorConsultationPace({
+        doctorId: docData.doctorId,
+        doctorCode: docData.doctorCode,
+        historicalConsultations,
+        appointments,
+        analyticsLogs
+      });
+
       return {
         ...docData,
         waitingCount: docWaiting.length,
         inConsultation: inConsult ? inConsult.patientName : null,
-        avgWaitMinutes: docAvgWait
+        avgWaitMinutes: docAvgWait,
+        consultationPace: docPace.averageConsultationTime,
+        trainedTodayCount: docPace.completedTodayCount
       };
     });
 
@@ -1022,6 +1124,8 @@ export function useFirebaseDB() {
     return {
       totalQueueLength,
       overallAvgWait,
+      overallConsultationPace: overallPaceData.averageConsultationTime,
+      overallTrainedConsultationsToday: overallPaceData.completedTodayCount,
       departmentsSummary,
       doctorsSummary,
       activeDoctors: doctors.filter(d => d.isAvailable !== false),
@@ -1030,7 +1134,7 @@ export function useFirebaseDB() {
       isEmpty,
       emptyMessage: 'Queue length: 0 | Average Wait Time: 0 min | No active department traffic.'
     };
-  }, [doctors, appointments, analyticsLogs]);
+  }, [doctors, appointments, analyticsLogs, historicalConsultations]);
 
   return {
     currentUser,
@@ -1046,6 +1150,7 @@ export function useFirebaseDB() {
     appointments,
     analyticsLogs,
     analyticsHistory: analyticsLogs,
+    historicalConsultations,
     allUsers,
     registerDoctor,
     getDoctorByCode,
@@ -1057,6 +1162,8 @@ export function useFirebaseDB() {
     markNotificationSent,
     purgeAllData,
     getAdminTelemetry,
+    calculateDoctorConsultationPace,
+    calculatePatientWaitTime,
     dbError
   };
 }
