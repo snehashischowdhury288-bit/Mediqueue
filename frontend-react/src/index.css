@@ -3483,6 +3483,44 @@ input, select, textarea {
   background: #FEE2E2;
 }
 
+.btn-alert-next-patient {
+  background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-size: 13.5px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-alert-next-patient:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.45);
+}
+
+.btn-alert-next-patient:disabled {
+  background: #F1F5F9;
+  color: #94A3B8;
+  border: 1px solid #E2E8F0;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-alert-next-patient.sent {
+  background: #ECFDF5;
+  color: #059669;
+  border: 1.5px solid #10B981;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+  cursor: default;
+}
+
 .btn-call-next-hero {
   background: linear-gradient(135deg, #3E69FE 0%, #2563EB 100%);
   color: #FFFFFF;

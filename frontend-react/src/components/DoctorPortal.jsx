@@ -8,6 +8,9 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
   const [selectedBatchId, setSelectedBatchId] = useState('b1'); // 'b1' (Morning) | 'b2' (Evening)
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [emailAlertBanner, setEmailAlertBanner] = useState(null);
+  const [manualAlertToast, setManualAlertToast] = useState(null);
+  const [isSendingManualAlert, setIsSendingManualAlert] = useState(false);
+  const [manualAlertSentSet, setManualAlertSentSet] = useState(new Set());
   const sentAlertsRef = useRef(new Set());
 
   const { appointments, callNext, completeConsultation, skipPatient, markNoShow, markNotificationSent } = db;
@@ -57,6 +60,21 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
 
   const waitingPatients = allActiveDoctorApts.filter(a => a.status === 'waiting');
   const batchWaitingPatients = batchAppointments.filter(a => a.status === 'waiting');
+
+  // Upcoming waiting patients for this doctor in current batch or sequence
+  const currentBatchId = inConsultation?.batchId || selectedBatchId || 'b1';
+
+  const waitingBatchPatients = allActiveDoctorApts
+    .filter(a => a.status === 'waiting' && (a.batchId || 'b1') === currentBatchId)
+    .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
+
+  // The patient immediately following the currently active patient in the batch queue (e.g. Slot #2 if Slot #1 is seen)
+  const nextPatientInLine = waitingBatchPatients[0] || waitingPatients[0] || null;
+  const nextPatientEmail = (nextPatientInLine?.patientEmail || '').trim();
+  const hasNextPatientEmail = Boolean(nextPatientEmail && nextPatientEmail.includes('@'));
+  const nextPatientKey = nextPatientInLine ? (nextPatientInLine.id || nextPatientInLine.appointmentId) : null;
+  const isAlertSent = Boolean(nextPatientKey && manualAlertSentSet.has(nextPatientKey));
+  const canAlertNext = Boolean(inConsultation && nextPatientInLine && hasNextPatientEmail);
 
   // Cured / Completed Patients for this specific doctor
   const completedPatients = appointments
@@ -263,6 +281,71 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     setTimeout(() => {
       evaluateThreeTurnsThreshold(appointments, selectedBatchId);
     }, 400);
+  };
+
+  // On-demand manual "Alert Next Patient" handler powered by Web3Forms
+  const handleManualAlertNext = async () => {
+    if (!canAlertNext || !nextPatientInLine || isSendingManualAlert || isAlertSent) return;
+
+    setIsSendingManualAlert(true);
+    setManualAlertToast(null);
+
+    const targetPatientName = nextPatientInLine.patientName || 'Patient';
+    const targetSlotNumber = nextPatientInLine.slotNumber || 2;
+    const doctorDisplayName = activeDoctor?.name || 'Doctor';
+
+    const payload = {
+      access_key: WEB3FORMS_ACCESS_KEY,
+      to_email: nextPatientEmail,
+      email: nextPatientEmail,
+      subject: 'MediQueue Urgent Alert: You are the Next Patient in Line',
+      name: 'MediQueue Hospital System',
+      message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside the examination room and keep your digital token ready.`
+    };
+
+    console.log(`[Web3Forms] Triggering manual alert to next patient: ${nextPatientEmail}...`);
+
+    try {
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const resData = await response.json().catch(() => null);
+      console.log('[Web3Forms] Manual alert result:', resData);
+
+      if (response.ok && resData?.success !== false) {
+        setManualAlertSentSet(prev => new Set([...prev, nextPatientKey]));
+        setManualAlertToast({
+          type: 'success',
+          patientName: targetPatientName,
+          email: nextPatientEmail,
+          slotNumber: targetSlotNumber,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+      } else {
+        const errorMsg = resData?.message || 'Failed to dispatch email alert via Web3Forms';
+        setManualAlertToast({
+          type: 'error',
+          message: `Error sending alert: ${errorMsg}`
+        });
+      }
+    } catch (err) {
+      console.error('[Web3Forms] Manual alert network error:', err);
+      setManualAlertToast({
+        type: 'error',
+        message: `Network error: ${err.message}`
+      });
+    } finally {
+      setIsSendingManualAlert(false);
+      setTimeout(() => {
+        setManualAlertToast(curr => (curr?.type === 'success' ? null : curr));
+      }, 8000);
+    }
   };
 
   // Helper to format priority badge
@@ -650,6 +733,53 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
 
               {/* Action Controls Bar */}
               <div className="exam-actions-row">
+                {/* On-Demand "Alert Next Patient" Action Button (In Circled Area) */}
+                <button
+                  type="button"
+                  className={`btn-alert-next-patient ${isAlertSent ? 'sent' : ''}`}
+                  onClick={handleManualAlertNext}
+                  disabled={!canAlertNext || isSendingManualAlert || isAlertSent}
+                  title={
+                    !inConsultation
+                      ? 'Active consultation must be in progress to alert next patient'
+                      : !nextPatientInLine
+                      ? 'No upcoming waiting patient in line'
+                      : !hasNextPatientEmail
+                      ? `Next patient (${nextPatientInLine.patientName}) has no email address registered`
+                      : isAlertSent
+                      ? `Readiness alert already dispatched to ${nextPatientInLine.patientName}`
+                      : `Send immediate readiness notification to ${nextPatientInLine.patientName} (Slot #${nextPatientInLine.slotNumber})`
+                  }
+                >
+                  {isSendingManualAlert ? (
+                    <>
+                      <i className="fa-solid fa-spinner fa-spin"></i>
+                      <span>Sending Alert...</span>
+                    </>
+                  ) : isAlertSent ? (
+                    <>
+                      <i className="fa-solid fa-check"></i>
+                      <span>Alert Sent ✓</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>📢</span>
+                      <span>Alert Next Patient</span>
+                      {nextPatientInLine && inConsultation && (
+                        <span className="font-mono" style={{
+                          fontSize: '11px',
+                          background: canAlertNext ? 'rgba(255,255,255,0.25)' : '#E2E8F0',
+                          padding: '2px 7px',
+                          borderRadius: '8px',
+                          marginLeft: '4px'
+                        }}>
+                          Slot #{nextPatientInLine.slotNumber}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+
                 {inConsultation ? (
                   <>
                     <button
@@ -695,6 +825,73 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                 )}
               </div>
             </section>
+
+            {/* Toast Feedback Banner for On-Demand "Alert Next Patient" Web3Forms Alert */}
+            {manualAlertToast && (
+              <div className="manual-alert-banner" style={{
+                background: manualAlertToast.type === 'success'
+                  ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)'
+                  : 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)',
+                border: `1.5px solid ${manualAlertToast.type === 'success' ? '#10B981' : '#EF4444'}`,
+                borderRadius: '16px',
+                padding: '14px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '20px',
+                boxShadow: `0 4px 14px ${manualAlertToast.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}`,
+                animation: 'fadeInDown 0.3s ease'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: manualAlertToast.type === 'success' ? '#10B981' : '#EF4444',
+                    color: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '17px'
+                  }}>
+                    <i className={manualAlertToast.type === 'success' ? 'fa-solid fa-bullhorn' : 'fa-solid fa-triangle-exclamation'}></i>
+                  </div>
+                  <div>
+                    <div style={{
+                      fontWeight: 800,
+                      color: manualAlertToast.type === 'success' ? '#065F46' : '#991B1B',
+                      fontSize: '14px'
+                    }}>
+                      {manualAlertToast.type === 'success'
+                        ? `Immediate readiness email sent to ${manualAlertToast.patientName} (${manualAlertToast.email})`
+                        : 'Error Dispatching Alert Email'}
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: manualAlertToast.type === 'success' ? '#047857' : '#B91C1C'
+                    }}>
+                      {manualAlertToast.type === 'success'
+                        ? `Assigned to Slot #${manualAlertToast.slotNumber} • Dispatched via Web3Forms API at ${manualAlertToast.time}`
+                        : manualAlertToast.message}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setManualAlertToast(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: manualAlertToast.type === 'success' ? '#065F46' : '#991B1B',
+                    cursor: 'pointer',
+                    fontSize: '16px'
+                  }}
+                  title="Dismiss notification banner"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            )}
 
             {/* Confirmation Banner for Automated 3-Turns-Away Web3Forms Alert */}
             {emailAlertBanner && (
