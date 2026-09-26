@@ -30,6 +30,8 @@ import {
   writeBatch,
   serverTimestamp,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   fbSignOut,
@@ -191,14 +193,69 @@ export function useFirebaseDB() {
       setAuthLoading(false);
     });
 
+    // Check for redirect result on page return (if popup was blocked or redirect was used)
+    getRedirectResult(auth)
+      .then(async result => {
+        if (result && result.user) {
+          const fbUser = result.user;
+          const userDocRef = doc(db, 'users', fbUser.uid);
+          const userSnap = await getDoc(userDocRef);
+          let profile;
+          const savedRole = localStorage.getItem('mediqueue_pending_auth_role') || 'patient';
+          if (userSnap.exists()) {
+            profile = { ...userSnap.data(), lastLogin: serverTimestamp() };
+            await setDoc(userDocRef, { lastLogin: serverTimestamp() }, { merge: true });
+          } else {
+            profile = {
+              uid: fbUser.uid,
+              name: fbUser.displayName || 'User',
+              email: fbUser.email || '',
+              photoURL: fbUser.photoURL || '',
+              role: savedRole,
+              createdAt: serverTimestamp(),
+              lastLogin: serverTimestamp()
+            };
+            await setDoc(userDocRef, profile, { merge: true });
+          }
+          localStorage.removeItem('mediqueue_pending_auth_role');
+          localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
+          setCurrentUser(profile);
+          console.log('[Firebase Auth] Successfully processed Google redirect sign-in for:', profile.name);
+        }
+      })
+      .catch(err => {
+        console.warn('[Firebase Auth] Redirect result error:', err.code, err.message);
+      });
+
     return () => unsubAuth();
   }, []);
 
-  // Google Sign-In via Popup
-  const signInWithGoogle = useCallback(async (preferredRole = 'patient', extraData = {}) => {
+  // Google Sign-In via Popup (with automatic Redirect fallback if popup is blocked)
+  const signInWithGoogle = useCallback(async (preferredRole = 'patient', extraData = {}, forceRedirect = false) => {
     try {
-      console.log(`[Firebase Auth] Initiating Google Sign-In popup (preferred role: ${preferredRole})...`);
-      const result = await signInWithPopup(auth, googleProvider);
+      console.log(`[Firebase Auth] Initiating Google Sign-In (preferred role: ${preferredRole}, forceRedirect: ${forceRedirect})...`);
+
+      if (forceRedirect) {
+        localStorage.setItem('mediqueue_pending_auth_role', preferredRole);
+        await signInWithRedirect(auth, googleProvider);
+        return { success: true, redirecting: true };
+      }
+
+      let result;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (popupErr) {
+        console.warn(`[Firebase Auth] Popup error (code: ${popupErr.code}):`, popupErr.message);
+        // If popup was blocked by browser or environment restrictions, fall back to redirect
+        if (popupErr.code === 'auth/popup-blocked') {
+          console.log('[Firebase Auth] Popup was blocked by browser. Automatically falling back to signInWithRedirect...');
+          localStorage.setItem('mediqueue_pending_auth_role', preferredRole);
+          await signInWithRedirect(auth, googleProvider);
+          return { success: true, redirecting: true };
+        }
+        throw popupErr;
+      }
+
       const fbUser = result.user;
       console.log(`[Firebase Auth] Google Sign-In success: UID=${fbUser.uid}, Email=${fbUser.email}`);
 

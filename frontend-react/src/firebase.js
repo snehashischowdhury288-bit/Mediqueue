@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as fbSignOut,
@@ -88,11 +90,13 @@ export function getFriendlyAuthErrorMessage(err) {
     case 'auth/weak-password':
       return "Password is too weak. Please choose a password with at least 6 characters.";
     case 'auth/popup-closed-by-user':
-      return "Google sign-in popup was closed before completing.";
+      return "Google Sign-In was cancelled or closed. (If Google displayed 'Access blocked: Error 403: access_denied', your Google Cloud OAuth Consent Screen is in 'Testing' mode and requires publishing or adding your email to 'Test Users').";
     case 'auth/popup-blocked':
-      return "Sign-in popup was blocked by your browser. Please allow popups for this site.";
+      return "The Google sign-in popup was blocked by your browser. Please allow popups for this site, or try again.";
     case 'auth/cancelled-popup-request':
       return "Google sign-in request was cancelled. Please try again.";
+    case 'auth/unauthorized-domain':
+      return "This domain is not authorized in Firebase Console (Authentication > Settings > Authorized domains).";
     case 'auth/network-request-failed':
       return "Network error. Please check your internet connection and try again.";
     case 'auth/too-many-requests':
@@ -132,6 +136,8 @@ export {
   writeBatch,
   runTransaction,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   fbSignOut,
