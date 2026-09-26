@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { calculateDoctorConsultationPace } from '../hooks/useWaitTimePrediction';
+import { sendAutomatedPresetEmail } from '../services/emailService';
+import EmailConfigModal from './EmailConfigModal';
 
 const WEB3FORMS_ACCESS_KEY = '7cbd2b0b-6fba-43be-993c-471ab95e28a4';
 
@@ -11,6 +13,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
   const [manualAlertToast, setManualAlertToast] = useState(null);
   const [isSendingManualAlert, setIsSendingManualAlert] = useState(false);
   const [manualAlertSentSet, setManualAlertSentSet] = useState(new Set());
+  const [isEmailConfigOpen, setIsEmailConfigOpen] = useState(false);
   const sentAlertsRef = useRef(new Set());
 
   const { appointments, callNext, completeConsultation, skipPatient, markNoShow, markNotificationSent, triggerUrgentNextAlert } = db;
@@ -141,7 +144,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     if (!patient) return false;
     const patientEmail = (patient.patientEmail || '').trim();
     if (!patientEmail || !patientEmail.includes('@')) {
-      console.warn('[Web3Forms] Cannot send 3-turns alert: patient email missing or invalid:', patient);
+      console.warn('[EmailService] Cannot send 3-turns alert: patient email missing or invalid:', patient);
       return false;
     }
 
@@ -156,29 +159,18 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     const docDisplayName = clinicianName || activeDoctor?.name || 'your Clinician';
     const patientDisplayName = patient.patientName || 'Patient';
 
-    const payload = {
-      access_key: WEB3FORMS_ACCESS_KEY,
-      to_email: patientEmail,
-      email: patientEmail,
-      subject: 'MediQueue Urgent Update: You are 3 turns away from your consultation',
-      name: 'MediQueue Hospital System',
-      message: `Hello ${patientDisplayName}, Dr. ${docDisplayName} has completed the previous consultation. You are now 3 turns away in the queue. Please arrive at the waiting area outside the clinic room immediately and prepare your digital token.`
-    };
-
-    console.log(`[Web3Forms] Dispatching 3-turns alert to ${patientEmail} for ${patientDisplayName}...`);
+    console.log(`[EmailService] Dispatching automated preset 3-turns alert to ${patientEmail} for ${patientDisplayName}...`);
 
     try {
-      const response = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+      const result = await sendAutomatedPresetEmail({
+        alertType: 'three_turns',
+        patientName: patientDisplayName,
+        patientEmail: patientEmail,
+        slotNumber: patient.slotNumber,
+        doctorName: docDisplayName,
+        doctorEmail: activeDoctor?.email,
+        roomNumber: activeDoctor?.room || 'Consultation Suite'
       });
-
-      const resData = await response.json().catch(() => null);
-      console.log('[Web3Forms] Submission status:', resData);
 
       // Persist notificationSent flag to Firestore to prevent duplicate alerts
       if (markNotificationSent) {
@@ -190,6 +182,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
         patientName: patientDisplayName,
         email: patientEmail,
         slotNumber: patient.slotNumber,
+        provider: result.provider,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
 
@@ -200,13 +193,13 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
 
       return true;
     } catch (err) {
-      console.error('[Web3Forms] Error submitting notification:', err);
+      console.error('[EmailService] Error submitting 3-turns notification:', err);
       if (markNotificationSent) {
         await markNotificationSent(aptId);
       }
       return false;
     }
-  }, [activeDoctor?.name, markNotificationSent]);
+  }, [activeDoctor?.name, activeDoctor?.email, activeDoctor?.room, markNotificationSent]);
 
   // Evaluates queue distance and triggers the 3-turns-away alert
   const evaluateThreeTurnsThreshold = useCallback((currentApts, targetBatch) => {
@@ -283,7 +276,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     }, 400);
   };
 
-  // On-demand manual "Alert Next Patient" handler powered by Web3Forms
+  // On-demand manual "Alert Next Patient" handler: sends automated preset email in background (zero redirect)
   const handleManualAlertNext = async () => {
     if (!canAlertNext || !nextPatientInLine || isSendingManualAlert || isAlertSent) return;
 
@@ -293,61 +286,53 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     const targetPatientName = nextPatientInLine.patientName || 'Patient';
     const targetSlotNumber = nextPatientInLine.slotNumber || 2;
     const doctorDisplayName = activeDoctor?.name || 'Doctor';
+    const doctorRoom = activeDoctor?.room || 'Consultation Suite';
 
-    const payload = {
-      access_key: WEB3FORMS_ACCESS_KEY,
-      to_email: nextPatientEmail,
-      email: nextPatientEmail,
-      from_name: 'MediQueue Hospital System',
-      name: targetPatientName,
-      subject: 'MediQueue Urgent Alert: You are the Next Patient in Line',
-      message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside the examination room and keep your digital token ready.`,
-      replyto: activeDoctor?.email || 'support@mediqueue.com'
-    };
+    console.log(`[EmailService] Triggering manual automated preset alert to next patient: ${nextPatientEmail}...`);
 
-    console.log(`[Web3Forms] Triggering manual alert to next patient: ${nextPatientEmail}...`);
-
-    // 1. Immediately push high-priority alert directly to patient portal in Firestore
+    // 1. Immediately push high-priority in-app alert directly to patient portal in Firestore
     if (triggerUrgentNextAlert && nextPatientKey) {
       await triggerUrgentNextAlert(nextPatientKey, {
         doctorName: doctorDisplayName,
         slotNumber: targetSlotNumber,
-        message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside the examination room and keep your digital token ready.`,
+        message: `Hello ${targetPatientName}, Dr. ${doctorDisplayName} has begun consultation with the current patient. You are assigned to Slot #${targetSlotNumber} and are directly NEXT in line. Please proceed immediately to the consultation door outside ${doctorRoom} and keep your digital token ready.`,
         triggeredAt: Date.now()
       });
     }
 
+    // 2. Dispatch automated preset email in the background without user redirect
     try {
-      const response = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+      const result = await sendAutomatedPresetEmail({
+        alertType: 'next_patient',
+        patientName: targetPatientName,
+        patientEmail: nextPatientEmail,
+        slotNumber: targetSlotNumber,
+        doctorName: doctorDisplayName,
+        doctorEmail: activeDoctor?.email || 'notifications@mediqueue.clinic',
+        roomNumber: doctorRoom
       });
 
-      const resData = await response.json().catch(() => null);
-      console.log('[Web3Forms] Manual alert result:', resData);
-
-      if (response.ok && resData?.success !== false) {
+      if (result.success) {
         setManualAlertSentSet(prev => new Set([...prev, nextPatientKey]));
         setManualAlertToast({
           type: 'success',
           patientName: targetPatientName,
           email: nextPatientEmail,
           slotNumber: targetSlotNumber,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          provider: result.provider,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          notice: result.isWeb3FormsNotice
+            ? 'Dispatched via Web3Forms API. (Tip: Click ⚙️ Email Settings to configure direct EmailJS / your personal key)'
+            : `Delivered via ${result.provider} directly to patient inbox.`
         });
       } else {
-        const errorMsg = resData?.message || 'Failed to dispatch email alert via Web3Forms';
         setManualAlertToast({
           type: 'error',
-          message: `Error sending alert: ${errorMsg}`
+          message: `Dispatch notice: ${result.message}`
         });
       }
     } catch (err) {
-      console.error('[Web3Forms] Manual alert network error:', err);
+      console.error('[EmailService] Manual alert network error:', err);
       setManualAlertToast({
         type: 'error',
         message: `Network error: ${err.message}`
@@ -356,7 +341,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
       setIsSendingManualAlert(false);
       setTimeout(() => {
         setManualAlertToast(curr => (curr?.type === 'success' ? null : curr));
-      }, 8000);
+      }, 10000);
     }
   };
 
@@ -792,6 +777,30 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                   )}
                 </button>
 
+                {/* Email Dispatch Settings Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsEmailConfigOpen(true)}
+                  title="Configure Email Dispatch Channel (EmailJS / Web3Forms / Resend) & Send Live Test"
+                  style={{
+                    background: '#F1F5F9',
+                    border: '1.5px solid #CBD5E1',
+                    borderRadius: '12px',
+                    padding: '10px 14px',
+                    color: '#334155',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <i className="fa-solid fa-gear"></i>
+                  <span>Email Settings</span>
+                </button>
+
                 {inConsultation ? (
                   <>
                     <button
@@ -883,7 +892,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                       color: manualAlertToast.type === 'success' ? '#047857' : '#B91C1C'
                     }}>
                       {manualAlertToast.type === 'success'
-                        ? `Assigned to Slot #${manualAlertToast.slotNumber} • Dispatched via Web3Forms API at ${manualAlertToast.time}`
+                        ? `Assigned to Slot #${manualAlertToast.slotNumber} • Dispatched at ${manualAlertToast.time}. ${manualAlertToast.notice || ''}`
                         : manualAlertToast.message}
                     </div>
                   </div>
@@ -1348,6 +1357,13 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
             )}
           </section>
         )}
+
+        {/* Automated Email Configuration & Testing Modal */}
+        <EmailConfigModal
+          isOpen={isEmailConfigOpen}
+          onClose={() => setIsEmailConfigOpen(false)}
+          activeDoctor={activeDoctor}
+        />
 
       </div>
     </main>
