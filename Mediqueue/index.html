@@ -1,0 +1,2065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediQueue - Smart OPD Queue & Clinical Management Architecture</title>
+  <meta name="description" content="State-driven Smart OPD Queue System with Role-based Onboarding, 5-per-batch Priority Shifting, and Real-time Queue Tracking.">
+  
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- QR Code Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  
+  <link rel="stylesheet" href="styles.css?v=1.2">
+</head>
+<body>
+
+  <!-- ========================================================================= -->
+  <!-- UNIVERSAL TOP APP BAR -->
+  <!-- ========================================================================= -->
+  <header class="app-top-nav">
+    <div class="nav-wrapper">
+      <div class="brand-group" onclick="handleLogoClick()">
+        <div class="brand-badge-logo">
+          <i class="fa-solid fa-notes-medical"></i>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">MediQueue</span>
+          <span class="brand-dept-tag">SMART OPD ARCHITECTURE</span>
+        </div>
+      </div>
+
+      <!-- Quick Global Utilities -->
+      <div class="nav-utility-bar">
+        <button class="btn-demo-scenario admin-nav-btn" id="btnNavAdminView" title="Hospital Administrative Overview">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Admin View</span>
+        </button>
+
+        <button class="btn-demo-scenario" id="btnPopulateDemoScenario" title="Pre-load 1 Doctor + 6 Patients for instant testing">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span>Populate Demo Scenario</span>
+        </button>
+
+        <button class="btn-util-icon" id="btnClearAllState" title="Reset all state & localStorage to clean empty state">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+
+        <div class="auth-session-chip hidden" id="userSessionChip">
+          <span class="chip-avatar" id="chipAvatar">U</span>
+          <span class="chip-label" id="chipLabel">User</span>
+          <button class="btn-chip-signout" id="btnGlobalSignOut" title="Sign Out">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- 1. LANDING & UNIFIED AUTHENTICATION ENTRY -->
+  <!-- ========================================================================= -->
+  <main class="page-viewport" id="viewLandingAuth">
+    <div class="landing-auth-container">
+      
+      <div class="landing-hero-center">
+        <span class="hero-kicker"><i class="fa-solid fa-circle-nodes"></i> SMART OUTPATIENT CLINIC INFRASTRUCTURE</span>
+        <h1 class="hero-title">Select Your MediQueue Portal</h1>
+        <p class="hero-desc">Experience real-time priority queue allocation, automated 5-patient batching, and automated patient distance notifications.</p>
+      </div>
+
+      <!-- Three Distinct Portal Choices -->
+      <div class="portal-choices-row">
+        <!-- Choice 1: Patient Portal -->
+        <div class="portal-choice-card" id="choicePatientPortal">
+          <div class="card-icon-bubble blue">
+            <img src="heart.gif" alt="Patient Portal" class="card-icon-gif">
+          </div>
+          <h2 class="choice-title">Patient Portal</h2>
+          <p class="choice-desc">Select an attending doctor, book your consultation, and monitor your live queue slot in real time.</p>
+          <ul class="choice-points">
+            <li><i class="fa-solid fa-check text-blue"></i> Real-time Queue Position Tracking</li>
+            <li><i class="fa-solid fa-check text-blue"></i> Priority Allocation (Elderly / Pregnant / Emergency)</li>
+            <li><i class="fa-solid fa-check text-blue"></i> 3-Patients-Away Automated Alerts</li>
+          </ul>
+          <button class="btn-select-portal blue" id="btnChoosePatient">
+            <span>Enter Patient Portal</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+
+        <!-- Choice 2: Doctor Portal -->
+        <div class="portal-choice-card" id="choiceDoctorPortal">
+          <div class="card-icon-bubble dark">
+            <img src="doctor.gif" alt="Doctor Portal" class="card-icon-gif">
+          </div>
+          <h2 class="choice-title">Doctor Portal</h2>
+          <p class="choice-desc">Manage clinical OPD consultations, view priority queue batches, call patients, and mark examinations completed.</p>
+          <ul class="choice-points">
+            <li><i class="fa-solid fa-check text-dark"></i> Instant Clinical Directory Reflection</li>
+            <li><i class="fa-solid fa-check text-dark"></i> Automated 5-Patient Batch Management</li>
+            <li><i class="fa-solid fa-check text-dark"></i> One-Click Examination Complete (✅)</li>
+          </ul>
+          <button class="btn-select-portal dark" id="btnChooseDoctor">
+            <span>Enter Doctor Portal</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+
+        <!-- Choice 3: Admin Portal -->
+        <div class="portal-choice-card" id="choiceAdminPortal">
+          <div class="card-icon-bubble purple">
+            <img src="admin.gif" alt="Admin Portal" class="card-icon-gif">
+          </div>
+          <h2 class="choice-title">Admin Portal</h2>
+          <p class="choice-desc">Manage hospital operations, doctors, patients, departments, appointments, queues, and system activity from one centralized dashboard.</p>
+          <ul class="choice-points">
+            <li><i class="fa-solid fa-check text-purple"></i> Complete Hospital Administration</li>
+            <li><i class="fa-solid fa-check text-purple"></i> Doctor & Staff Assignment</li>
+            <li><i class="fa-solid fa-check text-purple"></i> Patient Registration & Management</li>
+            <li><i class="fa-solid fa-check text-purple"></i> Department & Queue Management</li>
+            <li><i class="fa-solid fa-check text-purple"></i> Appointment & Token Management</li>
+            <li><i class="fa-solid fa-check text-purple"></i> Real-Time Patient & Doctor Monitoring</li>
+          </ul>
+          <button class="btn-select-portal purple" id="btnChooseAdmin">
+            <span>Enter Admin Portal</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Unified Authentication Box (Appears after choosing portal or toggled) -->
+      <div class="auth-dialog-card hidden" id="authDialogCard">
+        <div class="auth-dialog-header">
+          <button class="btn-back-choices" id="btnBackToChoices"><i class="fa-solid fa-arrow-left"></i> Back to Portals</button>
+          <div class="auth-role-tag" id="authRoleTitle">Patient Portal Authentication</div>
+        </div>
+
+        <!-- Authentication Method Tabs -->
+        <div class="auth-method-tabs">
+          <button type="button" class="auth-method-btn active" id="btnMethodPhone">
+            <i class="fa-solid fa-mobile-screen"></i> Mobile OTP
+          </button>
+          <button type="button" class="auth-method-btn" id="btnMethodEmail">
+            <i class="fa-regular fa-envelope"></i> Email Login
+          </button>
+        </div>
+
+        <!-- 1A: Mobile Number & OTP Verification Section -->
+        <div class="auth-method-pane" id="paneMobileAuth">
+          <div class="form-group" id="groupMobileNumber">
+            <label for="authPhoneInput">10-Digit Mobile Number <span class="req">*</span></label>
+            <div class="mobile-input-wrap">
+              <span class="country-prefix font-mono">+91</span>
+              <input type="tel" id="authPhoneInput" maxlength="10" placeholder="e.g. 9876543210" autocomplete="tel">
+              <button type="button" class="btn-get-otp" id="btnGetOtp">
+                <span>Get OTP</span>
+                <i class="fa-solid fa-paper-plane"></i>
+              </button>
+            </div>
+            <span class="field-hint" style="font-size: 11.5px; color: #64748B; margin-top: 5px; display: block;">
+              <i class="fa-solid fa-circle-info text-blue"></i> Enter 10 digits to receive simulated mock OTP <strong>1234</strong>
+            </span>
+          </div>
+
+          <!-- OTP Input Stage -->
+          <div class="otp-stage-container hidden" id="otpStageContainer">
+            <div class="form-group">
+              <div class="label-with-hint" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label for="authOtpInput">Enter 4-Digit OTP Code <span class="req">*</span></label>
+                <span class="badge-status waiting font-mono" style="font-size: 11px; padding: 2px 8px;">Mock OTP: 1234</span>
+              </div>
+              <div class="input-with-icon">
+                <i class="fa-solid fa-key"></i>
+                <input type="text" id="authOtpInput" maxlength="4" placeholder="Enter 4-digit OTP (1234)" autocomplete="one-time-code" class="font-mono">
+              </div>
+            </div>
+
+            <button type="button" class="btn-submit-auth" id="btnVerifyOtpSubmit">
+              <span>Verify & Proceed to Onboarding</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 1B: Email & Password Section (Secondary) -->
+        <div class="auth-method-pane hidden" id="paneEmailAuth">
+          <!-- Tabbed Toggle: Sign In vs Sign Up -->
+          <div class="auth-mode-tabs">
+            <button class="auth-mode-btn active" id="btnTabSignIn">Sign In</button>
+            <button class="auth-mode-btn" id="btnTabSignUp">Create New Account</button>
+          </div>
+
+          <form class="auth-unified-form" id="formUnifiedAuth">
+            <div class="form-group">
+              <label for="authEmailInput">Email Address</label>
+              <div class="input-with-icon">
+                <i class="fa-regular fa-envelope"></i>
+                <input type="email" id="authEmailInput" placeholder="Enter your email address" autocomplete="email">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="authPasswordInput">Password</label>
+              <div class="input-with-icon">
+                <i class="fa-solid fa-lock"></i>
+                <input type="password" id="authPasswordInput" placeholder="Enter password (min 6 characters)" autocomplete="current-password">
+              </div>
+            </div>
+
+            <div class="form-group hidden" id="groupConfirmPassword">
+              <label for="authConfirmPasswordInput">Confirm Password</label>
+              <div class="input-with-icon">
+                <i class="fa-solid fa-shield-halved"></i>
+                <input type="password" id="authConfirmPasswordInput" placeholder="Re-enter password">
+              </div>
+            </div>
+
+            <button type="submit" class="btn-submit-auth" id="btnAuthSubmit">
+              <span id="btnAuthSubmitText">Sign In & Proceed</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- Google Sign In -->
+        <div class="google-auth-divider">
+          <span>OR</span>
+        </div>
+        <button type="button" class="btn-google-auth" id="btnMockGoogleAuth">
+          <svg class="google-icon-svg" width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+          </svg>
+          <span>Sign in with Google</span>
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 2. DOCTOR ONBOARDING FORM (Empty Form Inputs - Zero Mock Data) -->
+  <!-- ========================================================================= -->
+  <main class="page-viewport hidden" id="viewDoctorOnboarding">
+    <div class="onboarding-wrapper">
+      <div class="onboarding-header">
+        <span class="step-indicator">DOCTOR ONBOARDING // STEP 1 OF 1</span>
+        <h2 class="onboarding-title">Complete Your Clinical Profile</h2>
+        <p class="onboarding-sub">Register your clinical credentials. Once saved, your profile will be immediately available in the Patient Portal for consultations.</p>
+      </div>
+
+      <form class="onboarding-card-form" id="formDoctorOnboarding">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="docNameInput">Doctor Full Name <span class="req">*</span></label>
+            <input type="text" id="docNameInput" required placeholder="e.g. Dr. Anya Sharma">
+          </div>
+          <div class="form-group">
+            <label for="docAgeInput">Doctor Age <span class="req">*</span></label>
+            <input type="number" id="docAgeInput" min="24" max="95" required placeholder="e.g. 38">
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="docExpInput">Years of Experience <span class="req">*</span></label>
+            <input type="text" id="docExpInput" required placeholder="e.g. 12 Years">
+          </div>
+          <div class="form-group">
+            <label for="docSpecInput">Specialization / Department <span class="req">*</span></label>
+            <input type="text" id="docSpecInput" list="clinicalSpecialtiesList" required placeholder="Select or type department">
+            <datalist id="clinicalSpecialtiesList">
+              <option value="General Physician"></option>
+              <option value="Cardiologist"></option>
+              <option value="Dermatologist"></option>
+              <option value="Pediatrician"></option>
+              <option value="Gynecologist"></option>
+              <option value="Orthopedic Surgeon"></option>
+              <option value="Dentist"></option>
+              <option value="Ophthalmologist"></option>
+              <option value="Psychiatrist"></option>
+              <option value="Gastroenterologist"></option>
+            </datalist>
+            <div class="quick-spec-chips">
+              <button type="button" class="spec-chip-btn" data-spec="General Physician">General Physician</button>
+              <button type="button" class="spec-chip-btn" data-spec="Cardiologist">Cardiologist</button>
+              <button type="button" class="spec-chip-btn" data-spec="Dermatologist">Dermatologist</button>
+              <button type="button" class="spec-chip-btn" data-spec="Pediatrician">Pediatrician</button>
+              <button type="button" class="spec-chip-btn" data-spec="Gynecologist">Gynecologist</button>
+              <button type="button" class="spec-chip-btn" data-spec="Orthopedic Surgeon">Orthopedic Surgeon</button>
+              <button type="button" class="spec-chip-btn" data-spec="Dentist">Dentist</button>
+              <button type="button" class="spec-chip-btn" data-spec="Ophthalmologist">Ophthalmologist</button>
+              <button type="button" class="spec-chip-btn" data-spec="Psychiatrist">Psychiatrist</button>
+              <button type="button" class="spec-chip-btn" data-spec="Gastroenterologist">Gastroenterologist</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="docRoomInput">OPD Room / Clinic Location <span class="req">*</span></label>
+          <input type="text" id="docRoomInput" required placeholder="e.g. Suite 304, Wing C, Level 3">
+        </div>
+
+        <button type="submit" class="btn-primary-action">
+          <i class="fa-solid fa-stethoscope"></i>
+          <span>Save Profile & Open Doctor Dashboard</span>
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 3. PATIENT ONBOARDING FORM (Empty Form Inputs - Zero Mock Data) -->
+  <!-- ========================================================================= -->
+  <main class="page-viewport hidden" id="viewPatientOnboarding">
+    <div class="onboarding-wrapper">
+      <div class="onboarding-header">
+        <span class="step-indicator">PATIENT PROFILE // STEP 1 OF 1</span>
+        <h2 class="onboarding-title">Patient Profile Registration</h2>
+        <p class="onboarding-sub">Enter your details and default priority category. You will pick your specialty and choose your doctor directly from the Clinical Services directory.</p>
+      </div>
+
+      <form class="onboarding-card-form" id="formPatientOnboarding">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="patNameInput">Patient Full Name <span class="req">*</span></label>
+            <input type="text" id="patNameInput" required placeholder="e.g. Elena Rostova">
+          </div>
+          <div class="form-group">
+            <label for="patAgeInput">Patient Age <span class="req">*</span></label>
+            <input type="number" id="patAgeInput" min="1" max="120" required placeholder="e.g. 42">
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="patPhoneInput">Phone Number <span class="req">*</span></label>
+            <input type="tel" id="patPhoneInput" required placeholder="e.g. +1 (555) 019-2834">
+          </div>
+          <div class="form-group">
+            <label for="patEmailInput">Email Address (for notification triggers) <span class="req">*</span></label>
+            <input type="email" id="patEmailInput" required placeholder="e.g. patient@example.com">
+          </div>
+        </div>
+
+        <!-- Patient Category / Type Selection -->
+        <div class="form-group">
+          <label>Patient Category / Priority Type <span class="req">*</span></label>
+          <div class="priority-options-grid">
+            <label class="priority-radio-card active" data-category="Normal">
+              <input type="radio" name="patientCategory" value="Normal" checked>
+              <div class="pr-icon normal"><i class="fa-solid fa-user"></i></div>
+              <div class="pr-text">
+                <span class="pr-title">Normal</span>
+                <span class="pr-desc">Standard sequential slot allocation (5 per batch)</span>
+              </div>
+            </label>
+
+            <label class="priority-radio-card" data-category="Elderly">
+              <input type="radio" name="patientCategory" value="Elderly">
+              <div class="pr-icon elderly"><i class="fa-solid fa-person-cane"></i></div>
+              <div class="pr-text">
+                <span class="pr-title">Elderly</span>
+                <span class="pr-desc">Priority shifting: Assigned to Slot 1 of batch</span>
+              </div>
+            </label>
+
+            <label class="priority-radio-card" data-category="Pregnant Woman">
+              <input type="radio" name="patientCategory" value="Pregnant Woman">
+              <div class="pr-icon pregnant"><i class="fa-solid fa-person-pregnant"></i></div>
+              <div class="pr-text">
+                <span class="pr-title">Pregnant Woman</span>
+                <span class="pr-desc">Priority shifting: Assigned to Slot 1 of batch</span>
+              </div>
+            </label>
+
+            <label class="priority-radio-card" data-category="Emergency">
+              <input type="radio" name="patientCategory" value="Emergency">
+              <div class="pr-icon emergency"><i class="fa-solid fa-truck-medical"></i></div>
+              <div class="pr-text">
+                <span class="pr-title">Emergency</span>
+                <span class="pr-desc">Immediate acute triage insertion</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary-action" id="btnSubmitPatientOnboarding">
+          <i class="fa-solid fa-arrow-right"></i>
+          <span>Save Profile & Choose Doctor from Services</span>
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 4. PATIENT PORTAL LAYOUT & LIVE APPOINTMENT VIEW -->
+  <!-- ========================================================================= -->
+  <main class="page-viewport hidden" id="viewPatientPortal">
+    <div class="portal-main-container">
+      
+      <!-- Greeting Header -->
+      <section class="patient-banner-row">
+        <div>
+          <h1 class="portal-greeting" id="patPortalGreeting">Hello Patient!</h1>
+          <p class="portal-sub">Your live OPD consultation status, queue position, and doctor association.</p>
+        </div>
+        <div class="patient-action-cluster">
+          <button class="btn-secondary-action" id="btnBookAnother"><i class="fa-solid fa-plus"></i> New Queue Token</button>
+          <button class="btn-secondary-action" id="btnPatientSignOut"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out</button>
+        </div>
+      </section>
+
+      <!-- Linked Doctor Card -->
+      <section class="doctor-association-card" id="patientDoctorAssociationCard">
+        <div class="doc-assoc-left">
+          <div class="doc-assoc-avatar" id="patAssocDocAvatar" aria-hidden="true">
+            <i class="fa-solid fa-user-doctor"></i>
+          </div>
+          <div class="doc-assoc-meta">
+            <span class="assoc-label">ASSIGNED CLINICAL PRACTITIONER</span>
+            <h2 class="assoc-name" id="patAssocDocName">Dr. Anya Sharma</h2>
+            <div class="assoc-sub" id="patAssocDocSpec">Cardiologist · Suite 304, Wing C</div>
+            <div class="assoc-status-indicator" id="patAssocDocStatus">
+              <span class="status-dot-green"></span>
+              <span class="status-text">OPD Active</span>
+            </div>
+          </div>
+        </div>
+        <div class="doc-assoc-right">
+          <div class="assoc-switch-box">
+            <label for="patDoctorSwitcherSelect" class="switch-doc-label">
+              <i class="fa-solid fa-repeat"></i> Change Doctor:
+            </label>
+            <div class="switch-select-wrapper">
+              <select id="patDoctorSwitcherSelect" class="doc-select-switcher" aria-label="Change Doctor">
+                <!-- Populated dynamically with registered doctors -->
+              </select>
+              <i class="fa-solid fa-chevron-down switch-select-arrow" aria-hidden="true"></i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CLINICAL SERVICES & SPECIALTIES (Redesigned Compact Exact Icons Grid) -->
+      <section class="patient-services-section">
+        <div class="services-section-header">
+          <div class="sec-title-group">
+            <h2 class="sec-title"><i class="fa-solid fa-shapes text-blue"></i> Clinical Services & Specialties</h2>
+            <p class="sec-sub">Select any specialty to view registered doctors, consulting suites, and direct queue tokens</p>
+          </div>
+          <div class="services-header-meta">
+            <span class="badge-total-services font-mono"><i class="fa-solid fa-circle-check text-green"></i> 10 SPECIALTIES AVAILABLE</span>
+          </div>
+        </div>
+
+        <div class="services-grid-compact" id="patientServicesGrid">
+          <!-- 1. General Physician -->
+          <div class="service-card-compact" data-specialty="General Physician" tabindex="0">
+            <div class="service-icon-box gp">
+              <i class="fa-solid fa-stethoscope"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">General Physician</span>
+              <span class="service-sub">Primary Care & Family</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="General Physician">OPD Active</span>
+          </div>
+
+          <!-- 2. Cardiologist -->
+          <div class="service-card-compact" data-specialty="Cardiologist" tabindex="0">
+            <div class="service-icon-box cardio">
+              <i class="fa-solid fa-heart-pulse"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Cardiologist</span>
+              <span class="service-sub">Heart & Cardiovascular</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Cardiologist">OPD Active</span>
+          </div>
+
+          <!-- 3. Dermatologist -->
+          <div class="service-card-compact" data-specialty="Dermatologist" tabindex="0">
+            <div class="service-icon-box derma">
+              <i class="fa-solid fa-hand-dots"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Dermatologist</span>
+              <span class="service-sub">Skin, Hair & Aesthetics</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Dermatologist">OPD Active</span>
+          </div>
+
+          <!-- 4. Pediatrician -->
+          <div class="service-card-compact" data-specialty="Pediatrician" tabindex="0">
+            <div class="service-icon-box pedia">
+              <i class="fa-solid fa-baby"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Pediatrician</span>
+              <span class="service-sub">Child & Infant Health</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Pediatrician">OPD Active</span>
+          </div>
+
+          <!-- 5. Gynecologist -->
+          <div class="service-card-compact" data-specialty="Gynecologist" tabindex="0">
+            <div class="service-icon-box gyne">
+              <i class="fa-solid fa-person-pregnant"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Gynecologist</span>
+              <span class="service-sub">Maternal & Women's Care</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Gynecologist">OPD Active</span>
+          </div>
+
+          <!-- 6. Orthopedic Surgeon -->
+          <div class="service-card-compact" data-specialty="Orthopedic Surgeon" tabindex="0">
+            <div class="service-icon-box ortho">
+              <i class="fa-solid fa-bone"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Orthopedic Surgeon</span>
+              <span class="service-sub">Joints, Bones & Trauma</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Orthopedic Surgeon">OPD Active</span>
+          </div>
+
+          <!-- 7. Dentist -->
+          <div class="service-card-compact" data-specialty="Dentist" tabindex="0">
+            <div class="service-icon-box dental">
+              <i class="fa-solid fa-tooth"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Dentist</span>
+              <span class="service-sub">Dental & Oral Health</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Dentist">OPD Active</span>
+          </div>
+
+          <!-- 8. Ophthalmologist -->
+          <div class="service-card-compact" data-specialty="Ophthalmologist" tabindex="0">
+            <div class="service-icon-box ophta">
+              <i class="fa-solid fa-eye"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Ophthalmologist</span>
+              <span class="service-sub">Vision & Eye Surgery</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Ophthalmologist">OPD Active</span>
+          </div>
+
+          <!-- 9. Psychiatrist -->
+          <div class="service-card-compact" data-specialty="Psychiatrist" tabindex="0">
+            <div class="service-icon-box psych">
+              <i class="fa-solid fa-brain"></i>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Psychiatrist</span>
+              <span class="service-sub">Mental Health & Behavioral</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Psychiatrist">OPD Active</span>
+          </div>
+
+          <!-- 10. Gastroenterologist -->
+          <div class="service-card-compact" data-specialty="Gastroenterologist" tabindex="0">
+            <div class="service-icon-box gastro">
+              <svg class="stomach-svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M12.5 2C12.2 2 12 2.2 12 2.5V5.1C10.8 5.4 9.8 6.1 9.1 7.1C8 8.5 7.6 10.4 7.9 12.2C8.2 14 9.3 15.6 10.9 16.5C11.5 16.9 12.2 17.1 12.9 17.2C12.8 18.2 12.3 19.1 11.5 19.7C10.7 20.3 9.7 20.5 8.7 20.2C7.7 19.9 6.9 19.2 6.5 18.2C6.3 17.8 5.8 17.6 5.4 17.8C5 18 4.8 18.5 5 18.9C5.6 20.4 6.8 21.4 8.3 21.8C9.8 22.2 11.3 22 12.5 21.1C13.7 20.2 14.5 18.8 14.7 17.3C16.3 16.9 17.7 16 18.6 14.7C19.5 13.4 19.8 11.8 19.5 10.2C19.2 8.6 18.3 7.2 17 6.3C16.3 5.8 15.6 5.5 14.8 5.4V2.5C14.8 2.2 14.6 2 14.3 2H12.5ZM13.3 6.9C13.6 6.9 13.8 6.9 14.1 6.9V9.3C13.8 9.3 13.6 9.3 13.3 9.3V6.9Z"/>
+              </svg>
+            </div>
+            <div class="service-info-col">
+              <span class="service-name">Gastroenterologist</span>
+              <span class="service-sub">Digestive & GI Tract</span>
+            </div>
+            <span class="service-pill-status font-mono" data-spec-badge="Gastroenterologist">OPD Active</span>
+          </div>
+        </div>
+
+        <!-- Interactive Specialty Practitioners Drawer -->
+        <div class="specialty-practitioners-drawer hidden" id="specialtyPractitionersDrawer">
+          <div class="drawer-header">
+            <div class="drawer-title-col">
+              <span class="drawer-kicker font-mono"><i class="fa-solid fa-stethoscope"></i> REGISTERED SPECIALISTS</span>
+              <h3 class="drawer-heading" id="drawerSpecialtyTitle">Specialty Doctors</h3>
+            </div>
+            <button class="btn-close-drawer" id="btnCloseSpecialtyDrawer" title="Close"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="drawer-practitioners-list" id="drawerPractitionersList">
+            <!-- Dynamically populated via app.js -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 3-Turns-Away High-Priority In-App Alert Banner (Requirement 6) -->
+      <section class="patient-turn-alert-banner hidden" id="pat3TurnsAlertBanner">
+        <div class="alert-icon-col">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="alert-content-col">
+          <div class="alert-kicker font-mono"><i class="fa-solid fa-bell"></i> URGENT QUEUE UPDATE &bull; 3 TURNS AWAY</div>
+          <h3 class="alert-heading">Attention: You are 3 turns away from your consultation. Please approach the waiting area.</h3>
+          <p class="alert-message">Your consultation with <strong id="alertBannerDocName">your doctor</strong> in <strong id="alertBannerDocRoom">Suite</strong> is coming up shortly.</p>
+        </div>
+        <button type="button" class="btn-dismiss-alert" id="btnDismiss3TurnAlert" title="Acknowledge">
+          <i class="fa-solid fa-check"></i>
+        </button>
+      </section>
+
+      <!-- LIVE QUEUE STATUS HERO (Dynamic State Updates) -->
+      <section class="live-patient-status-grid">
+        
+        <!-- Big Queue Metric Card -->
+        <div class="status-metric-card primary">
+          <div class="sm-card-header">
+            <span class="sm-badge"><span class="pulse-dot-green"></span> LIVE QUEUE POSITION</span>
+            <span class="sm-batch-tag font-mono" id="patCardBatchName">Batch 1</span>
+          </div>
+          <div class="sm-card-body">
+            <div class="big-rank-row">
+              <span class="big-rank font-mono" id="patCardPosition">1st</span>
+              <span class="big-rank-sub" id="patCardPositionSub">IN LINE</span>
+            </div>
+            <div class="slot-display-tag font-mono" id="patCardSlotBadge">Assigned Slot: Slot 1</div>
+            <div class="wait-calc-box">
+              <i class="fa-regular fa-clock"></i>
+              <span>Estimated Wait Time: <strong class="font-mono text-blue" id="patCardWaitTime">~0 min (Now)</strong></span>
+            </div>
+          </div>
+          <div class="sm-card-footer">
+            <div class="live-consult-indicator" id="patCardStatusState">
+              <i class="fa-solid fa-circle-check text-green"></i> Please remain in Waiting Bay
+            </div>
+          </div>
+        </div>
+
+        <!-- Consultation Batch Overview (5 per Batch) -->
+        <div class="status-metric-card">
+          <div class="sm-card-header">
+            <span class="sm-title">BATCH CAPACITY (MAX 5 PER BATCH)</span>
+            <span class="sm-counter font-mono" id="patBatchSlotsCounter">0 / 5 Filled</span>
+          </div>
+          <div class="batch-slots-visual" id="patBatchSlotsVisual">
+            <!-- 5 Slot circles populated dynamically -->
+          </div>
+          <div class="batch-rules-caption">
+            <i class="fa-solid fa-shield-heart text-blue"></i>
+            <span>Priority bookings (Elderly, Pregnant, Emergency) are dynamically inserted at <strong>Slot 1</strong> of the batch.</span>
+          </div>
+        </div>
+
+        <!-- Digital Token (QR Code) Card (Requirement 2) -->
+        <div class="status-metric-card qr-token-card" id="patDigitalTokenCard">
+          <div class="sm-card-header">
+            <span class="sm-badge"><i class="fa-solid fa-qrcode text-blue"></i> DIGITAL TOKEN PASS</span>
+            <span class="sm-batch-tag font-mono" id="patTokenIdTag">TOKEN #---</span>
+          </div>
+          <div class="sm-card-body token-body-center">
+            <div class="qr-canvas-wrapper" id="patLiveQrWrapper">
+              <canvas id="patLiveQrCanvas" width="120" height="120"></canvas>
+            </div>
+            <div class="token-payload-meta">
+              <div class="token-slot-line font-mono" id="patTokenSlotText">Slot -- &bull; Batch --</div>
+              <div class="token-scan-hint font-mono"><i class="fa-solid fa-barcode"></i> Scannable Token Pass</div>
+            </div>
+          </div>
+          <div class="sm-card-footer">
+            <button type="button" class="btn-view-pass" id="btnViewFullTicketModal">
+              <i class="fa-solid fa-expand"></i> <span>View Full Token Pass</span>
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Current Batch Queue Roster (Privacy Masked) -->
+      <section class="queue-roster-section">
+        <div class="section-header-row">
+          <h3 class="sec-title">Current Batch Queue Roster</h3>
+          <span class="sec-sub font-mono" id="patRosterBatchTitle">Batch 1</span>
+        </div>
+        <div class="queue-table-wrapper">
+          <table class="roster-table">
+            <thead>
+              <tr>
+                <th>SLOT</th>
+                <th>PATIENT</th>
+                <th>CATEGORY</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody id="patRosterTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 5. DOCTOR PORTAL LAYOUT & LIVE QUEUE MANAGEMENT -->
+  <!-- ========================================================================= -->
+  <main class="page-viewport hidden" id="viewDoctorPortal">
+    <div class="portal-main-container">
+
+      <!-- Doctor Top Banner Overview -->
+      <section class="doctor-banner-overview">
+        <div class="doc-hero-left">
+          <div class="doc-badge-avatar"><i class="fa-solid fa-user-doctor"></i></div>
+          <div class="doc-title-group">
+            <div class="doc-credential-line">
+              <h1 class="doc-main-name" id="docDashboardName">Dr. Full Name</h1>
+              <span class="doc-status-badge font-mono" id="docDashboardStatus"><span class="pulse-dot-green"></span> OPD CONSULTATION SUITE</span>
+            </div>
+            <div class="doc-sub-line" id="docDashboardSpecialty">Specialization • Room Location</div>
+          </div>
+        </div>
+
+        <div class="doc-hero-right">
+          <div class="queue-stat-pill">
+            <span class="qs-num font-mono text-blue" id="docTotalScheduledCount">0</span>
+            <span class="qs-lbl">Total Scheduled</span>
+          </div>
+          <div class="queue-stat-pill">
+            <span class="qs-num font-mono text-amber" id="docActiveBatchName">Batch 1</span>
+            <span class="qs-lbl">Active Batch</span>
+          </div>
+          <button class="btn-secondary-action" id="btnDoctorSignOut"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out</button>
+        </div>
+      </section>
+
+      <!-- Active Consultation In-Suite Card (Prominent Callout) -->
+      <section class="active-in-suite-hero" id="activeInSuiteHeroCard">
+        <div class="suite-hero-header">
+          <span class="suite-status-tag"><i class="fa-solid fa-door-open"></i> IN CONSULTATION (ACTIVE ROOM)</span>
+          <div class="suite-timer font-mono" id="docConsultationTimer">00:00</div>
+        </div>
+
+        <div class="suite-patient-details-row">
+          <div class="patient-lead-info">
+            <h2 class="patient-active-name" id="activePatientDisplayName">No Patient in Consultation</h2>
+            <div class="patient-active-meta font-mono" id="activePatientDisplayMeta">Waiting for patient to enter...</div>
+            <div class="patient-contact-pill" id="activePatientContactRow">
+              <i class="fa-solid fa-phone"></i> <span id="activePatientPhoneText">--</span>
+              <span class="divider">|</span>
+              <i class="fa-regular fa-envelope"></i> <span id="activePatientEmailText">--</span>
+            </div>
+          </div>
+
+          <div class="suite-action-controls">
+            <button type="button" class="btn-ctrl-action call-next" id="btnDoctorCallNext" title="Activates and highlights the next patient in line">
+              <i class="fa-solid fa-bullhorn"></i>
+              <span>Call Next</span>
+            </button>
+            <button type="button" class="btn-ctrl-action complete" id="btnCompleteCurrentPatient" title="Mark Consultation Finished (✅) & Advance Queue">
+              <i class="fa-solid fa-circle-check"></i>
+              <span>Consultation Complete (✅)</span>
+            </button>
+            <button type="button" class="btn-ctrl-action skip" id="btnDoctorSkipCurrent" title="Move current patient to the end of the active batch">
+              <i class="fa-solid fa-forward-step"></i>
+              <span>Skip (⏭️)</span>
+            </button>
+            <button type="button" class="btn-ctrl-action noshow" id="btnDoctorNoShowCurrent" title="Flag as No-Show (❌) and remove from live queue">
+              <i class="fa-solid fa-circle-xmark"></i>
+              <span>Mark No-Show (❌)</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Appointments Table / Queue List -->
+      <section class="doctor-queue-table-section">
+        <div class="section-header-row">
+          <div>
+            <h3 class="sec-title">Scheduled Queue Roster</h3>
+            <p class="sec-sub">Patients registered for clinical consultation in your OPD suite & batch</p>
+          </div>
+          <div class="table-tools">
+            <button class="btn-mini-tool" id="btnQuickAddWalkInPatient"><i class="fa-solid fa-user-plus"></i> + Walk-In Patient</button>
+          </div>
+        </div>
+
+        <div class="queue-table-wrapper">
+          <table class="roster-table doctor-table">
+            <thead>
+              <tr>
+                <th>SLOT & BATCH</th>
+                <th>PATIENT NAME</th>
+                <th>AGE</th>
+                <th>PHONE NUMBER</th>
+                <th>PRIORITY TAG</th>
+                <th>STATUS</th>
+                <th>ACTION CONTROLS</th>
+              </tr>
+            </thead>
+            <tbody id="docQueueTableBody">
+              <!-- Dynamically populated via app.js -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 6. HOSPITAL ADMIN CENTRAL CONTROL CENTER -->
+  <!-- ========================================================================= -->
+  <main class="page-viewport hidden admin-page-viewport" id="viewAdminDashboard">
+    <div class="admin-layout-container">
+      
+      <!-- Admin Sidebar -->
+      <aside class="admin-sidebar" id="adminSidebar">
+        <div class="admin-sidebar-header">
+          <div class="admin-brand-lockup">
+            <div class="admin-logo-mark"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="admin-brand-copy">
+              <span class="admin-brand-title font-mono">MEDIQUEUE</span>
+              <span class="admin-brand-subtitle">ADMIN CONTROL CENTER</span>
+            </div>
+          </div>
+        </div>
+
+        <nav class="admin-nav-menu">
+          <!-- OVERVIEW -->
+          <div class="admin-nav-group">
+            <button type="button" class="admin-nav-item active" data-admin-tab="overview">
+              <i class="fa-solid fa-gauge-high"></i>
+              <span>Overview</span>
+            </button>
+          </div>
+
+          <!-- OPERATIONS -->
+          <div class="admin-nav-group">
+            <div class="admin-nav-heading">OPERATIONS</div>
+            <button type="button" class="admin-nav-item" data-admin-tab="live-queues">
+              <i class="fa-solid fa-bolt-lightning"></i>
+              <span>Live Queues</span>
+              <span class="admin-nav-pill font-mono bg-live" id="navLiveQueueCount">0</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="appointments">
+              <i class="fa-regular fa-calendar-check"></i>
+              <span>Appointments</span>
+              <span class="admin-nav-pill font-mono" id="navApptCount">0</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="patients">
+              <i class="fa-solid fa-users"></i>
+              <span>Patients</span>
+            </button>
+          </div>
+
+          <!-- MANAGEMENT -->
+          <div class="admin-nav-group">
+            <div class="admin-nav-heading">MANAGEMENT</div>
+            <button type="button" class="admin-nav-item" data-admin-tab="patient-registration">
+              <i class="fa-solid fa-user-plus"></i>
+              <span>Patient Registration</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="doctors">
+              <i class="fa-solid fa-user-doctor"></i>
+              <span>Doctors</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="staff">
+              <i class="fa-solid fa-id-badge"></i>
+              <span>Staff</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="departments">
+              <i class="fa-solid fa-sitemap"></i>
+              <span>Departments</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="doctor-assignment">
+              <i class="fa-solid fa-arrows-split-up-and-left"></i>
+              <span>Doctor Assignment</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="queue-management">
+              <i class="fa-solid fa-sliders"></i>
+              <span>Queue Management</span>
+            </button>
+          </div>
+
+          <!-- ANALYTICS -->
+          <div class="admin-nav-group">
+            <div class="admin-nav-heading">ANALYTICS</div>
+            <button type="button" class="admin-nav-item" data-admin-tab="hospital-analytics">
+              <i class="fa-solid fa-chart-line"></i>
+              <span>Hospital Analytics</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="department-analytics">
+              <i class="fa-solid fa-chart-pie"></i>
+              <span>Department Analytics</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="doctor-analytics">
+              <i class="fa-solid fa-stethoscope"></i>
+              <span>Doctor Analytics</span>
+            </button>
+          </div>
+
+          <!-- COMMUNICATION -->
+          <div class="admin-nav-group">
+            <div class="admin-nav-heading">COMMUNICATION</div>
+            <button type="button" class="admin-nav-item" data-admin-tab="notifications">
+              <i class="fa-regular fa-bell"></i>
+              <span>Notifications</span>
+              <span class="admin-nav-pill font-mono bg-purple" id="navNotifCount">0</span>
+            </button>
+          </div>
+
+          <!-- SYSTEM -->
+          <div class="admin-nav-group">
+            <div class="admin-nav-heading">SYSTEM</div>
+            <button type="button" class="admin-nav-item" data-admin-tab="audit-logs">
+              <i class="fa-solid fa-shield-virus"></i>
+              <span>Audit Logs</span>
+            </button>
+            <button type="button" class="admin-nav-item" data-admin-tab="settings">
+              <i class="fa-solid fa-gear"></i>
+              <span>Settings</span>
+            </button>
+          </div>
+        </nav>
+
+        <div class="admin-sidebar-footer">
+          <div class="admin-user-profile">
+            <div class="admin-avatar font-mono">AD</div>
+            <div class="admin-user-details">
+              <span class="admin-user-name">Chief Administrator</span>
+              <span class="admin-user-role font-mono">OPD COMMAND</span>
+            </div>
+          </div>
+          <button type="button" class="btn-sidebar-exit" id="btnAdminSidebarExit" title="Exit to Portal Selection">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Admin Main Content Workspace -->
+      <div class="admin-workspace">
+        <!-- Top Workspace Bar -->
+        <header class="admin-workspace-header">
+          <div class="admin-header-title-box">
+            <div class="admin-header-greeting">
+              <h1 class="admin-header-title" id="adminHeaderTitle">Good Morning, Admin</h1>
+              <span class="badge-role-auth font-mono"><i class="fa-solid fa-shield-halved"></i> CHIEF ADMIN</span>
+            </div>
+            <p class="admin-header-subtitle" id="adminHeaderSubtitle">Monitor and manage today's hospital operations.</p>
+          </div>
+          <div class="admin-header-actions">
+            <div class="admin-clock-badge font-mono" id="adminClockBadge">
+              <span class="pulse-dot-green"></span>
+              <span id="adminLiveClock">LIVE</span>
+            </div>
+            <button type="button" class="btn-admin-action secondary" id="btnAdminTelemetryRefresh">
+              <i class="fa-solid fa-arrows-rotate"></i>
+              <span>Sync</span>
+            </button>
+            <button type="button" class="btn-admin-action primary" id="btnAdminQuickRegister">
+              <i class="fa-solid fa-user-plus"></i>
+              <span>Register Patient</span>
+            </button>
+            <button type="button" class="btn-admin-action outline" id="btnAdminExit">
+              <i class="fa-solid fa-arrow-left"></i>
+              <span>Exit Portal</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Dynamic Panes -->
+        <!-- PANE 1: OVERVIEW -->
+        <div class="admin-tab-pane active" id="adminPaneOverview">
+          <!-- 6 Key KPIs Required -->
+          <div class="kpi-metric-grid">
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title font-mono">TOTAL PATIENTS</span>
+                <div class="kpi-icon blue"><i class="fa-solid fa-users"></i></div>
+              </div>
+              <div class="kpi-value font-mono" id="adminKpiTotalPatients">0</div>
+              <div class="kpi-footer"><span class="kpi-trend green"><i class="fa-solid fa-arrow-trend-up"></i> Registered today</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title font-mono">CURRENTLY WAITING</span>
+                <div class="kpi-icon amber"><i class="fa-solid fa-clock-rotate-left"></i></div>
+              </div>
+              <div class="kpi-value font-mono text-amber" id="adminKpiWaiting">0</div>
+              <div class="kpi-footer"><span>In active OPD queues</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title font-mono">IN CONSULTATION</span>
+                <div class="kpi-icon green"><i class="fa-solid fa-stethoscope"></i></div>
+              </div>
+              <div class="kpi-value font-mono text-green" id="adminKpiInConsultation">0</div>
+              <div class="kpi-footer"><span>Currently inside suites</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title font-mono">COMPLETED TODAY</span>
+                <div class="kpi-icon purple"><i class="fa-solid fa-circle-check"></i></div>
+              </div>
+              <div class="kpi-value font-mono" id="adminKpiCompleted">0</div>
+              <div class="kpi-footer"><span class="kpi-trend green"><i class="fa-solid fa-check"></i> Consultations done</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title font-mono">AVERAGE WAIT TIME</span>
+                <div class="kpi-icon red"><i class="fa-solid fa-hourglass-half"></i></div>
+              </div>
+              <div class="kpi-value font-mono" id="adminKpiAvgWait">0 min</div>
+              <div class="kpi-footer"><span>Est. OPD wait throughput</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title font-mono">ACTIVE QUEUES</span>
+                <div class="kpi-icon dark"><i class="fa-solid fa-network-wired"></i></div>
+              </div>
+              <div class="kpi-value font-mono" id="adminKpiActiveQueues">0</div>
+              <div class="kpi-footer"><span>Live departmental lines</span></div>
+            </div>
+          </div>
+
+          <!-- Section 27: Patient Journey Pipeline -->
+          <div class="admin-journey-card">
+            <div class="admin-journey-header">
+              <div>
+                <h3 class="card-headline"><i class="fa-solid fa-route text-blue"></i> Central Patient Journey Pipeline</h3>
+                <p class="card-caption">End-to-end telemetry across all active MediQueue stages</p>
+              </div>
+              <span class="badge-pipeline-live font-mono"><span class="pulse-dot-green"></span> REAL-TIME PIPELINE</span>
+            </div>
+            <div class="journey-pipeline" id="adminJourneyPipeline">
+              <!-- Rendered via app.js with live patient counts at each stage -->
+            </div>
+          </div>
+
+          <!-- Overview 2-Column Split: Active Queues Snapshot + Recent System Audit Trail -->
+          <div class="admin-overview-grid">
+            <div class="admin-box-card">
+              <div class="admin-box-header">
+                <h3 class="card-headline"><i class="fa-solid fa-bolt-lightning text-amber"></i> Live Hospital Queues</h3>
+                <button type="button" class="btn-link-action" onclick="switchAdminTab('live-queues')">View All Queues &rarr;</button>
+              </div>
+              <div class="admin-overview-queue-list" id="overviewQueueSnapshot">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+
+            <div class="admin-box-card">
+              <div class="admin-box-header">
+                <h3 class="card-headline"><i class="fa-solid fa-shield-halved text-purple"></i> Operational Audit Stream</h3>
+                <button type="button" class="btn-link-action" onclick="switchAdminTab('audit-logs')">Full Audit Trail &rarr;</button>
+              </div>
+              <div class="admin-audit-stream-list" id="overviewAuditSnapshot">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 2: LIVE QUEUES -->
+        <div class="admin-tab-pane" id="adminPaneLiveQueues">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Live Hospital Queues & Control Center</h2>
+              <p class="pane-subtitle">Monitor and directly control all department OPD queues in real-time</p>
+            </div>
+            <div class="pane-actions-group">
+              <button type="button" class="btn-admin-action secondary" onclick="refreshAdminData()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+            </div>
+          </div>
+
+          <!-- Live Queues Grid Container -->
+          <div class="live-queues-grid" id="adminLiveQueuesContainer">
+            <!-- Dynamically populated per active queue: GM, Cardio, Ortho, etc. -->
+          </div>
+        </div>
+
+        <!-- PANE 3: APPOINTMENTS -->
+        <div class="admin-tab-pane" id="adminPaneAppointments">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Hospital Appointments Management</h2>
+              <p class="pane-subtitle">Filter, view, reassign, reschedule, and manage OPD appointments</p>
+            </div>
+          </div>
+
+          <!-- Appointment Filters Bar -->
+          <div class="admin-filter-bar">
+            <div class="filter-item search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="filterApptSearch" placeholder="Search patient name, token, ID...">
+            </div>
+            <div class="filter-item">
+              <select id="filterApptDept">
+                <option value="">All Departments</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <select id="filterApptDoctor">
+                <option value="">All Doctors</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <select id="filterApptStatus">
+                <option value="">All Statuses</option>
+                <option value="Waiting">WAITING</option>
+                <option value="In-Consultation">IN CONSULTATION</option>
+                <option value="Completed">COMPLETED</option>
+                <option value="No-Show">NO-SHOW</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Appointments Table -->
+          <div class="admin-table-card">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>TOKEN</th>
+                    <th>PATIENT NAME</th>
+                    <th>DEPARTMENT</th>
+                    <th>ATTENDING DOCTOR</th>
+                    <th>BATCH / SLOT</th>
+                    <th>PRIORITY</th>
+                    <th>SOURCE</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminApptsTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 4: ALL PATIENTS -->
+        <div class="admin-tab-pane" id="adminPanePatients">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">All Patients Directory</h2>
+              <p class="pane-subtitle">Central patient records, registration source, tokens, and medical history</p>
+            </div>
+            <button type="button" class="btn-admin-action primary" onclick="switchAdminTab('patient-registration')">
+              <i class="fa-solid fa-user-plus"></i> <span>Register Patient</span>
+            </button>
+          </div>
+
+          <!-- Patient Search and Filters -->
+          <div class="admin-filter-bar">
+            <div class="filter-item search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="filterPatientSearch" placeholder="Search by Name, Mobile, Patient ID, Token...">
+            </div>
+            <div class="filter-item">
+              <select id="filterPatientDept">
+                <option value="">All Departments</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <select id="filterPatientPriority">
+                <option value="">All Priority Types</option>
+                <option value="Normal">Normal</option>
+                <option value="Elderly">Elderly</option>
+                <option value="Pregnant">Pregnant</option>
+                <option value="Emergency">Emergency</option>
+                <option value="Approved Clinical Priority">Approved Clinical Priority</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <select id="filterPatientSource">
+                <option value="">All Sources</option>
+                <option value="PATIENT PORTAL">PATIENT PORTAL</option>
+                <option value="STAFF">STAFF</option>
+                <option value="KIOSK">KIOSK</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- All Patients Table -->
+          <div class="admin-table-card">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>PATIENT ID</th>
+                    <th>NAME & MOBILE</th>
+                    <th>AGE / GENDER</th>
+                    <th>DEPARTMENT</th>
+                    <th>DOCTOR</th>
+                    <th>TOKEN</th>
+                    <th>QUEUE POS</th>
+                    <th>PRIORITY</th>
+                    <th>SOURCE</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminPatientsTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 5: PATIENT REGISTRATION -->
+        <div class="admin-tab-pane" id="adminPanePatientRegistration">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Manual Patient Registration & OPD Allocation</h2>
+              <p class="pane-subtitle">Register walk-in, kiosk, or clinical referral patients into the MediQueue system</p>
+            </div>
+          </div>
+
+          <div class="admin-form-card">
+            <form id="formAdminRegisterPatient">
+              <div class="form-section-heading"><i class="fa-solid fa-address-card text-blue"></i> Personal & Contact Information</div>
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label for="adminRegName">Full Name <span class="req">*</span></label>
+                  <input type="text" id="adminRegName" required placeholder="e.g. Ramesh Chandra">
+                </div>
+                <div class="form-group">
+                  <label for="adminRegMobile">Mobile Number <span class="req">*</span></label>
+                  <input type="tel" id="adminRegMobile" required placeholder="e.g. 9876543210" maxlength="10">
+                </div>
+                <div class="form-group">
+                  <label for="adminRegAge">Age / DOB <span class="req">*</span></label>
+                  <input type="number" id="adminRegAge" required min="1" max="120" placeholder="e.g. 54">
+                </div>
+              </div>
+
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label for="adminRegGender">Gender <span class="req">*</span></label>
+                  <select id="adminRegGender" required>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="adminRegPriority">Priority Category <span class="req">*</span></label>
+                  <select id="adminRegPriority" required>
+                    <option value="Normal">Normal</option>
+                    <option value="Elderly">Elderly (Priority Shift)</option>
+                    <option value="Pregnant">Pregnant (Priority Shift)</option>
+                    <option value="Approved Clinical Priority">Approved Clinical Priority</option>
+                    <option value="Emergency">Emergency (Immediate Triage)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="adminRegSource">Registration Source <span class="req">*</span></label>
+                  <select id="adminRegSource" required>
+                    <option value="STAFF">STAFF (Front Desk)</option>
+                    <option value="KIOSK">KIOSK (Walk-in Self Service)</option>
+                    <option value="PATIENT PORTAL">PATIENT PORTAL</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-section-heading" style="margin-top: 18px;"><i class="fa-solid fa-hospital-user text-purple"></i> Department & Attending Doctor Assignment</div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="adminRegDept">Assign Department <span class="req">*</span></label>
+                  <select id="adminRegDept" required>
+                    <option value="">Select Department...</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="adminRegDoctor">Assign Attending Doctor <span class="req">*</span></label>
+                  <select id="adminRegDoctor" required>
+                    <option value="">Select Attending Doctor...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="adminRegAddress">Residential Address</label>
+                  <input type="text" id="adminRegAddress" placeholder="Street, City, Postal Code">
+                </div>
+                <div class="form-group">
+                  <label for="adminRegEmergency">Emergency Contact</label>
+                  <input type="text" id="adminRegEmergency" placeholder="Name & Phone Number">
+                </div>
+              </div>
+
+              <div class="form-actions-row">
+                <button type="reset" class="btn-admin-action outline" id="btnAdminClearRegForm">
+                  <i class="fa-solid fa-eraser"></i> <span>CLEAR</span>
+                </button>
+                <button type="submit" class="btn-admin-action primary">
+                  <i class="fa-solid fa-check"></i> <span>REGISTER PATIENT</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- PANE 6: DOCTORS -->
+        <div class="admin-tab-pane" id="adminPaneDoctors">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Doctor Management</h2>
+              <p class="pane-subtitle">Clinical staff roster, consultation availability, room suites, and performance</p>
+            </div>
+            <button type="button" class="btn-admin-action primary" id="btnOpenAddDoctorModal">
+              <i class="fa-solid fa-plus"></i> <span>Add Doctor</span>
+            </button>
+          </div>
+
+          <div class="admin-doctors-grid" id="adminDoctorsListContainer">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- PANE 7: STAFF -->
+        <div class="admin-tab-pane" id="adminPaneStaff">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Staff Management</h2>
+              <p class="pane-subtitle">Triage nurses, receptionists, queue officers, and department coordinators</p>
+            </div>
+            <button type="button" class="btn-admin-action primary" id="btnOpenAddStaffModal">
+              <i class="fa-solid fa-plus"></i> <span>Add Staff Member</span>
+            </button>
+          </div>
+
+          <div class="admin-table-card">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>STAFF ID</th>
+                    <th>NAME</th>
+                    <th>ROLE</th>
+                    <th>DEPARTMENT</th>
+                    <th>CONTACT</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminStaffTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 8: DEPARTMENTS -->
+        <div class="admin-tab-pane" id="adminPaneDepartments">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Department Management</h2>
+              <p class="pane-subtitle">Hospital clinical departments, specialist coverage, active queues, and throughput</p>
+            </div>
+            <button type="button" class="btn-admin-action primary" id="btnOpenAddDeptModal">
+              <i class="fa-solid fa-plus"></i> <span>Create Department</span>
+            </button>
+          </div>
+
+          <div class="admin-depts-grid" id="adminDeptsGridContainer">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- PANE 9: DOCTOR ASSIGNMENT -->
+        <div class="admin-tab-pane" id="adminPaneDoctorAssignment">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Doctor & Department Assignment</h2>
+              <p class="pane-subtitle">Assign doctors to clinical departments with immediate cross-portal synchronization</p>
+            </div>
+          </div>
+
+          <div class="doctor-assignment-card">
+            <div class="assignment-header-badge font-mono">
+              <i class="fa-solid fa-arrows-rotate"></i> REAL-TIME PORTAL SYNCHRONIZATION ENABLED
+            </div>
+            <p class="assignment-intro-text">
+              Assigning a doctor immediately updates the <strong>Patient Portal</strong> specialist directory, 
+              the <strong>Doctor Portal</strong> clinical suite, and all <strong>Queue and Appointment</strong> systems.
+            </p>
+
+            <form id="formAdminAssignDoctor" class="assignment-form">
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="assignSelectDept">Target Department <span class="req">*</span></label>
+                  <select id="assignSelectDept" required>
+                    <option value="">Select Target Department...</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="assignSelectDoctor">Available Doctor <span class="req">*</span></label>
+                  <select id="assignSelectDoctor" required>
+                    <option value="">Select Doctor to Reassign...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="assignment-preview-box" id="assignmentPreviewBox">
+                <span class="preview-label">Assignment Preview:</span>
+                <div class="preview-flow" id="assignmentPreviewFlow">
+                  <span class="badge-doc font-mono" id="prevDocName">Doctor</span>
+                  <i class="fa-solid fa-arrow-right"></i>
+                  <span class="badge-dept font-mono" id="prevDeptName">Department</span>
+                </div>
+              </div>
+
+              <div class="form-actions-row">
+                <button type="submit" class="btn-admin-action primary" id="btnConfirmAssignDoctor">
+                  <i class="fa-solid fa-check"></i> <span>ASSIGN DOCTOR</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Current Departmental Assignment Matrix -->
+          <div class="admin-table-card" style="margin-top: 24px;">
+            <div class="section-header-row" style="padding: 16px 20px;">
+              <div>
+                <h3 class="sec-title">Current Department & Doctor Roster</h3>
+                <p class="sec-sub">Live allocation matrix showing all specialist suites</p>
+              </div>
+            </div>
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>DEPARTMENT</th>
+                    <th>ASSIGNED DOCTORS</th>
+                    <th>ACTIVE QUEUE</th>
+                    <th>SUITE / ROOM</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminDeptAssignmentMatrixBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 10: QUEUE MANAGEMENT -->
+        <div class="admin-tab-pane" id="adminPaneQueueManagement">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Queue Operations & Policy Control</h2>
+              <p class="pane-subtitle">Manage 5-per-batch limits, priority shifting rules, and queue state overrides</p>
+            </div>
+          </div>
+
+          <div class="queue-policies-grid">
+            <div class="policy-card">
+              <div class="policy-header">
+                <div class="policy-icon blue"><i class="fa-solid fa-layer-group"></i></div>
+                <div>
+                  <h4 class="policy-title">5-Patient Batching Engine</h4>
+                  <span class="policy-status active">ACTIVE & ENFORCED</span>
+                </div>
+              </div>
+              <p class="policy-desc">Patients are partitioned into discrete 5-patient OPD batches (Morning, Afternoon, Evening). Shifting occurs automatically upon completion or no-show.</p>
+              <div class="policy-stat font-mono">Max Batch Size: <strong>5 Patients</strong></div>
+            </div>
+
+            <div class="policy-card">
+              <div class="policy-header">
+                <div class="policy-icon amber"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div>
+                  <h4 class="policy-title">Priority Shifting Rule</h4>
+                  <span class="policy-status active">ACTIVE & ENFORCED</span>
+                </div>
+              </div>
+              <p class="policy-desc">Elderly, Pregnant, and Emergency patients are automatically inserted at the top of the active batch (Slot 1) without disturbing subsequent pre-allocated slots.</p>
+              <div class="policy-stat font-mono">Priority Insertion: <strong>Slot 1 Shift</strong></div>
+            </div>
+
+            <div class="policy-card">
+              <div class="policy-header">
+                <div class="policy-icon purple"><i class="fa-solid fa-bell"></i></div>
+                <div>
+                  <h4 class="policy-title">3-Turns Away Notification</h4>
+                  <span class="policy-status active">ACTIVE & ENFORCED</span>
+                </div>
+              </div>
+              <p class="policy-desc">When a patient's position reaches 3 patients ahead, an automated proactive notification is dispatched across In-App, SMS, and WhatsApp.</p>
+              <div class="policy-stat font-mono">Alert Threshold: <strong>3 Patients Away</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 11: HOSPITAL ANALYTICS -->
+        <div class="admin-tab-pane" id="adminPaneHospitalAnalytics">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Hospital Analytics</h2>
+              <p class="pane-subtitle">Comprehensive OPD throughput, patient volume, and wait-time metrics</p>
+            </div>
+          </div>
+
+          <div class="analytics-charts-grid">
+            <div class="admin-box-card">
+              <div class="admin-box-header">
+                <h3 class="card-headline"><i class="fa-solid fa-chart-column text-blue"></i> Department Patient Volumes</h3>
+              </div>
+              <div class="analytics-bar-chart" id="hospitalDeptVolumeChart">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <div class="admin-box-card">
+              <div class="admin-box-header">
+                <h3 class="card-headline"><i class="fa-solid fa-hourglass-half text-amber"></i> Average Waiting Times (Minutes)</h3>
+              </div>
+              <div class="analytics-bar-chart" id="hospitalDeptWaitChart">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 12: DEPARTMENT ANALYTICS -->
+        <div class="admin-tab-pane" id="adminPaneDepartmentAnalytics">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Department Analytics</h2>
+              <p class="pane-subtitle">Detailed workload distribution, queue lengths, and completion rates by department</p>
+            </div>
+          </div>
+
+          <div class="admin-table-card">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>DEPARTMENT</th>
+                    <th>PATIENT VOLUME</th>
+                    <th>QUEUE LENGTH</th>
+                    <th>AVG WAIT TIME</th>
+                    <th>COMPLETION RATE</th>
+                    <th>NO-SHOW RATE</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody id="deptAnalyticsTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 13: DOCTOR ANALYTICS -->
+        <div class="admin-tab-pane" id="adminPaneDoctorAnalytics">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Doctor Analytics & Productivity</h2>
+              <p class="pane-subtitle">Patients handled, consultation duration, and clinical throughput</p>
+            </div>
+          </div>
+
+          <div class="admin-table-card">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>DOCTOR</th>
+                    <th>DEPARTMENT</th>
+                    <th>PATIENTS HANDLED</th>
+                    <th>CURRENTLY WAITING</th>
+                    <th>COMPLETED</th>
+                    <th>NO-SHOWS</th>
+                    <th>AVG CONSULT TIME</th>
+                  </tr>
+                </thead>
+                <tbody id="doctorAnalyticsTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 14: NOTIFICATIONS -->
+        <div class="admin-tab-pane" id="adminPaneNotifications">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">Notification Telemetry & 3-Turn Alerts</h2>
+              <p class="pane-subtitle">Monitor proactive automated SMS, WhatsApp, and In-App delivery status</p>
+            </div>
+          </div>
+
+          <!-- 3-Turn Proactive Alerts Banner -->
+          <div class="three-turn-alert-banner">
+            <div class="banner-icon"><i class="fa-solid fa-person-walking-arrow-right"></i></div>
+            <div class="banner-content">
+              <h4 class="banner-title">3-Turns Away Proactive Approaching System</h4>
+              <p class="banner-text">MediQueue triggers automated alerts when a patient reaches 3 positions from the consulting room: <em>"Your turn is approaching. You are approximately 3 patients away."</em></p>
+            </div>
+            <span class="badge-status waiting font-mono" id="approachingCountBadge">0 approaching</span>
+          </div>
+
+          <div class="admin-table-card" style="margin-top: 20px;">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>TIMESTAMP</th>
+                    <th>PATIENT</th>
+                    <th>NOTIFICATION TYPE</th>
+                    <th>MESSAGE PAYLOAD</th>
+                    <th>CHANNEL</th>
+                    <th>DELIVERY STATUS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminNotifsTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 15: AUDIT LOGS -->
+        <div class="admin-tab-pane" id="adminPaneAuditLogs">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">System Audit Logs</h2>
+              <p class="pane-subtitle">Comprehensive immutable audit trail of all administrative and clinical actions</p>
+            </div>
+          </div>
+
+          <div class="admin-table-card">
+            <div class="queue-table-wrapper">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>TIMESTAMP</th>
+                    <th>ACTION</th>
+                    <th>PERFORMED BY</th>
+                    <th>TARGET</th>
+                    <th>DETAILS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminAuditTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 16: SETTINGS -->
+        <div class="admin-tab-pane" id="adminPaneSettings">
+          <div class="pane-header-row">
+            <div>
+              <h2 class="pane-title">System Settings & Operations Configuration</h2>
+              <p class="pane-subtitle">Configure hospital profile, OPD shift hours, and queue parameters</p>
+            </div>
+          </div>
+
+          <div class="admin-form-card">
+            <div class="form-section-heading"><i class="fa-solid fa-hospital text-blue"></i> Hospital Profile</div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>Hospital / Clinic Name</label>
+                <input type="text" value="MediQueue Memorial Multi-Specialty Hospital" readonly>
+              </div>
+              <div class="form-group">
+                <label>OPD Operational Hours</label>
+                <input type="text" value="08:00 AM - 08:00 PM (Monday - Saturday)" readonly>
+              </div>
+            </div>
+
+            <div class="form-section-heading" style="margin-top: 18px;"><i class="fa-solid fa-database text-purple"></i> Data Management</div>
+            <div class="form-actions-row" style="justify-content: flex-start; gap: 14px;">
+              <button type="button" class="btn-admin-action secondary" onclick="document.getElementById('btnPopulateDemoScenario').click()">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> <span>Reload Comprehensive Demo Data</span>
+              </button>
+              <button type="button" class="btn-admin-action outline text-red" onclick="document.getElementById('btnClearAllState').click()">
+                <i class="fa-solid fa-trash-can"></i> <span>Clear State Store</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: INSTANT DOCTOR APPOINTMENT BOOKING FROM SERVICES -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalBookConsultation">
+    <div class="dialog-box" style="max-width: 520px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-ticket text-blue"></i> Book OPD Consultation</h3>
+        <button class="btn-close-dialog" id="btnCloseBookConsultation"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="formConfirmBooking">
+        <input type="hidden" id="modalBookingDoctorId" value="">
+        <div class="dialog-body" style="display: flex; flex-direction: column; gap: 14px;">
+          <!-- Selected Doctor Summary Preview -->
+          <div class="doc-selection-preview selected" id="modalDocSummary" style="margin: 0;">
+            <!-- Populated via app.js -->
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="modalPatName">Patient Full Name <span class="req">*</span></label>
+              <input type="text" id="modalPatName" required placeholder="e.g. Elena Rostova">
+            </div>
+            <div class="form-group">
+              <label for="modalPatAge">Age <span class="req">*</span></label>
+              <input type="number" id="modalPatAge" min="1" max="120" required placeholder="e.g. 42">
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="modalPatPhone">Phone Number <span class="req">*</span></label>
+              <input type="tel" id="modalPatPhone" required placeholder="e.g. 9876543210">
+            </div>
+            <div class="form-group">
+              <label for="modalPatEmail">Email (for 3-Away Alert) <span class="req">*</span></label>
+              <input type="email" id="modalPatEmail" required placeholder="patient@example.com">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Priority Category <span class="req">*</span></label>
+            <div class="priority-options-grid compact" style="grid-template-columns: repeat(2, 1fr); gap: 8px;">
+              <label class="priority-radio-card active" data-modal-category="Normal">
+                <input type="radio" name="modalCategory" value="Normal" checked>
+                <div class="pr-icon normal"><i class="fa-solid fa-user"></i></div>
+                <div class="pr-text">
+                  <span class="pr-title">Normal</span>
+                  <span class="pr-desc">Standard queue (5/batch)</span>
+                </div>
+              </label>
+              <label class="priority-radio-card" data-modal-category="Elderly">
+                <input type="radio" name="modalCategory" value="Elderly">
+                <div class="pr-icon elderly"><i class="fa-solid fa-person-cane"></i></div>
+                <div class="pr-text">
+                  <span class="pr-title">Elderly</span>
+                  <span class="pr-desc">Slot 1 priority shifting</span>
+                </div>
+              </label>
+              <label class="priority-radio-card" data-modal-category="Pregnant Woman">
+                <input type="radio" name="modalCategory" value="Pregnant Woman">
+                <div class="pr-icon pregnant"><i class="fa-solid fa-person-pregnant"></i></div>
+                <div class="pr-text">
+                  <span class="pr-title">Pregnant</span>
+                  <span class="pr-desc">Slot 1 priority shifting</span>
+                </div>
+              </label>
+              <label class="priority-radio-card" data-modal-category="Emergency">
+                <input type="radio" name="modalCategory" value="Emergency">
+                <div class="pr-icon emergency"><i class="fa-solid fa-truck-medical"></i></div>
+                <div class="pr-text">
+                  <span class="pr-title">Emergency</span>
+                  <span class="pr-desc">Acute triage insertion</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #E2E8F0;">
+          <button type="button" class="btn-secondary-action" id="btnCancelBookingModal">Cancel</button>
+          <button type="submit" class="btn-primary-action" id="btnConfirmBookSubmit">
+            <i class="fa-solid fa-ticket"></i> Confirm Appointment Token
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: DIGITAL TOKEN & SCANNABLE QR PASS (Requirement 2) -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalDigitalTicket">
+    <div class="dialog-box token-modal-box" style="max-width: 500px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-qrcode text-blue"></i> Digital OPD Token & QR Pass</h3>
+        <button type="button" class="btn-close-dialog" id="btnCloseDigitalTicketModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="dialog-body ticket-modal-body">
+        <div class="ticket-pass-card" id="ticketPassContainer">
+          <div class="pass-top-band">
+            <div class="pass-brand"><i class="fa-solid fa-notes-medical"></i> MediQueue Digital Token</div>
+            <span class="pass-slot-badge font-mono" id="modalTicketSlotPill">Slot 1 &bull; Batch 1</span>
+          </div>
+          <div class="pass-main-content">
+            <div class="pass-qr-box">
+              <canvas id="modalQrCanvas" width="140" height="140"></canvas>
+            </div>
+            <div class="pass-details-box">
+              <div class="pass-token-num font-mono" id="modalTicketTokenId">TOKEN #---</div>
+              <h4 class="pass-patient-name" id="modalTicketPatientName">Patient Name</h4>
+              <div class="pass-doctor-info" id="modalTicketDoctorName">Dr. Specialist</div>
+              <div class="pass-room-info" id="modalTicketDeptRoom">Department &bull; Suite</div>
+              <div class="pass-priority-tag font-mono" id="modalTicketCategoryBadge">Normal Priority</div>
+            </div>
+          </div>
+          <div class="pass-payload-footer">
+            <span class="payload-caption font-mono">ENCODED QR PAYLOAD:</span>
+            <div class="payload-code font-mono" id="modalTicketPayloadDisplay">
+              {"appointmentId": "...", "doctorCode": "...", "slotNumber": 1, "patientName": "..."}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn-primary-action" id="btnContinueToQueue">
+          <i class="fa-solid fa-circle-check"></i> <span>View Live Queue Position</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: SIMULATED SMS OTP GATEWAY (Requirement 1) -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalSimulatedOtp">
+    <div class="dialog-box" style="max-width: 420px; text-align: center;">
+      <div class="dialog-header" style="justify-content: center; background: #F8FAFC;">
+        <h3 class="dialog-title" style="font-size: 16px;">
+          <i class="fa-solid fa-shield-halved text-blue"></i> Simulated SMS Gateway
+        </h3>
+      </div>
+      <div class="dialog-body" style="padding: 24px;">
+        <div style="font-size: 40px; color: #3E69FE; margin-bottom: 10px;">
+          <i class="fa-solid fa-comment-sms"></i>
+        </div>
+        <p style="font-size: 13.5px; color: #64748B; margin-bottom: 14px;">
+          MediQueue OTP dispatched to <strong id="simulatedOtpPhoneDisplay" class="font-mono text-dark">+91 9876543210</strong>
+        </p>
+        <div style="background: rgba(62, 105, 254, 0.06); border-radius: 14px; padding: 16px; margin-bottom: 18px; border: 1.5px dashed #3E69FE;">
+          <span style="font-size: 11px; font-weight: 700; color: #3E69FE; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">YOUR SIMULATED OTP CODE</span>
+          <span class="font-mono" style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #1E293B;">1234</span>
+        </div>
+        <button type="button" class="btn-primary-action" id="btnAutoFillOtp" style="width: 100%; justify-content: center;">
+          <i class="fa-solid fa-paste"></i> <span>Auto-Fill "1234" & Proceed</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: ADMIN PATIENT HISTORY & JOURNEY -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalPatientHistory">
+    <div class="dialog-box" style="max-width: 680px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-clock-rotate-left text-blue"></i> Patient Clinical Journey & History</h3>
+        <button type="button" class="btn-close-dialog" id="btnClosePatientHistoryModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="dialog-body" id="patientHistoryModalBody" style="max-height: 70vh; overflow-y: auto; padding: 20px;">
+        <!-- Dynamically rendered via app.js -->
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn-secondary-action" id="btnClosePatientHistoryFooter">Close Record</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: ADMIN DOCTOR PROFILE & PERFORMANCE -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalDoctorProfile">
+    <div class="dialog-box" style="max-width: 640px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-user-doctor text-dark"></i> Specialist Clinical Profile</h3>
+        <button type="button" class="btn-close-dialog" id="btnCloseDoctorProfileModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="dialog-body" id="doctorProfileModalBody" style="max-height: 70vh; overflow-y: auto; padding: 20px;">
+        <!-- Dynamically rendered via app.js -->
+      </div>
+      <div class="dialog-footer" style="display: flex; justify-content: space-between;">
+        <button type="button" class="btn-secondary-action" id="btnCloseDoctorProfileFooter">Close Profile</button>
+        <button type="button" class="btn-primary-action" id="btnDoctorProfileLiveQueue">
+          <i class="fa-solid fa-bolt-lightning"></i> <span>View Live Queue</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: ADD DOCTOR -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalAddDoctor">
+    <div class="dialog-box" style="max-width: 540px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-user-plus text-blue"></i> Add New Medical Specialist</h3>
+        <button type="button" class="btn-close-dialog" id="btnCloseAddDoctorModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="formAddDoctorModal">
+        <div class="dialog-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="form-group">
+            <label for="addDocName">Doctor Full Name <span class="req">*</span></label>
+            <input type="text" id="addDocName" required placeholder="e.g. Dr. Priya Nair">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="addDocDept">Department <span class="req">*</span></label>
+              <select id="addDocDept" required>
+                <!-- Populated via app.js -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="addDocRoom">Room / OPD Suite <span class="req">*</span></label>
+              <input type="text" id="addDocRoom" required placeholder="e.g. Suite 204">
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="addDocPhone">Mobile Number</label>
+              <input type="tel" id="addDocPhone" placeholder="e.g. 9876543210">
+            </div>
+            <div class="form-group">
+              <label for="addDocEmail">Email Address</label>
+              <input type="email" id="addDocEmail" placeholder="dr.nair@mediqueue.org">
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="addDocExperience">Experience / Credentials</label>
+              <input type="text" id="addDocExperience" placeholder="e.g. MD, 12 Yrs Exp">
+            </div>
+            <div class="form-group">
+              <label for="addDocStatus">Status</label>
+              <select id="addDocStatus">
+                <option value="Active">Active</option>
+                <option value="On Break">On Break</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn-secondary-action" id="btnCancelAddDoctor">Cancel</button>
+          <button type="submit" class="btn-primary-action"><i class="fa-solid fa-check"></i> Add Doctor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: ADD STAFF -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalAddStaff">
+    <div class="dialog-box" style="max-width: 500px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-id-badge text-purple"></i> Add Hospital Staff</h3>
+        <button type="button" class="btn-close-dialog" id="btnCloseAddStaffModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="formAddStaffModal">
+        <div class="dialog-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="form-group">
+            <label for="addStaffName">Staff Member Name <span class="req">*</span></label>
+            <input type="text" id="addStaffName" required placeholder="e.g. Deepa Verma">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="addStaffRole">Role <span class="req">*</span></label>
+              <select id="addStaffRole" required>
+                <option value="Triage Nurse">Triage Nurse</option>
+                <option value="Receptionist">Receptionist</option>
+                <option value="Queue Officer">Queue Officer</option>
+                <option value="Department Coordinator">Department Coordinator</option>
+                <option value="OPD Admin">OPD Admin</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="addStaffDept">Assigned Department <span class="req">*</span></label>
+              <select id="addStaffDept" required>
+                <!-- Populated via app.js -->
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="addStaffPhone">Mobile Number</label>
+            <input type="tel" id="addStaffPhone" placeholder="e.g. 9811223344">
+          </div>
+        </div>
+        <div class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn-secondary-action" id="btnCancelAddStaff">Cancel</button>
+          <button type="submit" class="btn-primary-action"><i class="fa-solid fa-check"></i> Add Staff</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: ADD DEPARTMENT -->
+  <!-- ========================================================================= -->
+  <div class="modal-backdrop hidden" id="modalAddDept">
+    <div class="dialog-box" style="max-width: 500px;">
+      <div class="dialog-header">
+        <h3 class="dialog-title"><i class="fa-solid fa-sitemap text-blue"></i> Create Clinical Department</h3>
+        <button type="button" class="btn-close-dialog" id="btnCloseAddDeptModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="formAddDeptModal">
+        <div class="dialog-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="form-group">
+            <label for="addDeptName">Department Name <span class="req">*</span></label>
+            <input type="text" id="addDeptName" required placeholder="e.g. Ophthalmology">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="addDeptCode">Department Code <span class="req">*</span></label>
+              <input type="text" id="addDeptCode" required placeholder="e.g. OPHTH" style="text-transform: uppercase;">
+            </div>
+            <div class="form-group">
+              <label for="addDeptFloor">Floor / Wing <span class="req">*</span></label>
+              <input type="text" id="addDeptFloor" required placeholder="e.g. 3rd Floor, Wing B">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="addDeptDesc">Description</label>
+            <input type="text" id="addDeptDesc" placeholder="e.g. Eye examinations, vision care, and retinal surgery">
+          </div>
+        </div>
+        <div class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn-secondary-action" id="btnCancelAddDept">Cancel</button>
+          <button type="submit" class="btn-primary-action"><i class="fa-solid fa-check"></i> Create Department</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Popup -->
+  <div class="toast-popup hidden" id="toastNotice">
+    <i class="fa-solid fa-circle-check toast-icon"></i>
+    <span id="toastMsg">Action completed successfully.</span>
+  </div>
+
+  <!-- State Store & Application Scripts -->
+  <script src="QueueStore.js?v=1.2"></script>
+  <script src="app.js?v=1.2"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "mediqueue-app",
+  "version": "1.0.0",
+  "description": "MediQueue - Smart OPD Queue & Clinical Management Architecture",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
