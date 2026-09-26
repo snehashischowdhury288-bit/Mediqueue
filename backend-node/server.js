@@ -1010,7 +1010,7 @@ app.post(['/api/gmail/send', '/api/gmail'], async (req, res) => {
       subject = 'MediQueue Urgent: You are the NEXT patient in line',
       text,
       html,
-      gmailUser = process.env.GMAIL_USER,
+      gmailUser = process.env.GMAIL_USER || 'deyprayas3@gmail.com',
       gmailPass = process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD
     } = req.body || {};
 

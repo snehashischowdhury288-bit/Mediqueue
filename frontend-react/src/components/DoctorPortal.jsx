@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { calculateDoctorConsultationPace } from '../hooks/useWaitTimePrediction';
 import { sendAutomatedPresetEmail } from '../services/emailService';
-import EmailConfigModal from './EmailConfigModal';
 
 export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user }) {
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
@@ -11,7 +10,6 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
   const [manualAlertToast, setManualAlertToast] = useState(null);
   const [isSendingManualAlert, setIsSendingManualAlert] = useState(false);
   const [manualAlertSentSet, setManualAlertSentSet] = useState(new Set());
-  const [isEmailConfigOpen, setIsEmailConfigOpen] = useState(false);
   const sentAlertsRef = useRef(new Set());
 
   const { appointments, callNext, completeConsultation, skipPatient, markNoShow, markNotificationSent, triggerUrgentNextAlert } = db;
@@ -746,7 +744,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                   {isSendingManualAlert ? (
                     <>
                       <i className="fa-solid fa-spinner fa-spin"></i>
-                      <span>Sending via Mailtrap...</span>
+                      <span>Sending Alert...</span>
                     </>
                   ) : isAlertSent ? (
                     <>
@@ -770,30 +768,6 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                       )}
                     </>
                   )}
-                </button>
-
-                {/* Email Dispatch Settings Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsEmailConfigOpen(true)}
-                  title="Configure Email Dispatch Channel (EmailJS / Web3Forms / Resend) & Send Live Test"
-                  style={{
-                    background: '#F1F5F9',
-                    border: '1.5px solid #CBD5E1',
-                    borderRadius: '12px',
-                    padding: '10px 14px',
-                    color: '#334155',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <i className="fa-solid fa-gear"></i>
-                  <span>Email Settings</span>
                 </button>
 
                 {inConsultation ? (
@@ -1352,14 +1326,6 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
             )}
           </section>
         )}
-
-        {/* Automated Email Configuration & Testing Modal */}
-        <EmailConfigModal
-          isOpen={isEmailConfigOpen}
-          onClose={() => setIsEmailConfigOpen(false)}
-          activeDoctor={activeDoctor}
-          nextPatient={nextPatientInLine}
-        />
 
       </div>
     </main>

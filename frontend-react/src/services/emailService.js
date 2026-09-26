@@ -19,13 +19,15 @@ export const EMAIL_PROVIDERS = {
   RESEND: 'resend'
 };
 
+export const DEFAULT_GMAIL_USER = 'deyprayas3@gmail.com';
+
 // Retrieve email configuration from LocalStorage
 export function getEmailConfig() {
   return {
-    provider: localStorage.getItem('mq_email_provider') || EMAIL_PROVIDERS.MAILTRAP,
+    provider: localStorage.getItem('mq_email_provider') || EMAIL_PROVIDERS.GMAIL,
     mailtrapToken: localStorage.getItem('mq_mailtrap_token') || DEFAULT_MAILTRAP_TOKEN,
     mailtrapSender: localStorage.getItem('mq_mailtrap_sender') || DEFAULT_MAILTRAP_SENDER,
-    gmailUser: localStorage.getItem('mq_gmail_user') || '',
+    gmailUser: localStorage.getItem('mq_gmail_user') || DEFAULT_GMAIL_USER,
     gmailPass: localStorage.getItem('mq_gmail_pass') || '',
     emailjsServiceId: localStorage.getItem('mq_emailjs_service_id') || '',
     emailjsTemplateId: localStorage.getItem('mq_emailjs_template_id') || '',
