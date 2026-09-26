@@ -1358,6 +1358,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
           isOpen={isEmailConfigOpen}
           onClose={() => setIsEmailConfigOpen(false)}
           activeDoctor={activeDoctor}
+          nextPatient={nextPatientInLine}
         />
 
       </div>

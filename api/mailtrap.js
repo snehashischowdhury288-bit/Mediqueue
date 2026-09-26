@@ -29,8 +29,7 @@ export default async function handler(req, res) {
       text,
       html,
       token = process.env.MAILTRAP_TOKEN || 'e0003d35e29d71e96224530855a6c244',
-      sender = process.env.MAILTRAP_SENDER || 'mailtrap@demomailtrap.com',
-      senderName = 'MediQueue Hospital System'
+      sender
     } = req.body || {};
 
     if (!to || !to.includes('@')) {
@@ -41,6 +40,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: 'Mailtrap API token required' });
     }
 
+    // Set sender to the next patient's actual real email address (no fake demomailtrap.com mock data)
+    const effectiveSender = (sender && !sender.includes('demomailtrap.com')) ? sender : to;
+    const effectiveSenderName = patientName ? `Patient ${patientName}` : 'Patient in Line';
+
     // 1. Try Mailtrap Production Sending API
     try {
       const prodRes = await fetch('https://send.api.mailtrap.io/api/send', {
@@ -50,7 +53,7 @@ export default async function handler(req, res) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: { email: sender, name: senderName },
+          from: { email: effectiveSender, name: effectiveSenderName },
           to: [{ email: to, name: patientName || 'Patient' }],
           subject,
           text,
@@ -96,7 +99,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: { email: sender, name: senderName },
+        from: { email: effectiveSender, name: effectiveSenderName },
         to: [{ email: to, name: patientName || 'Patient' }],
         subject,
         text,

@@ -4,18 +4,20 @@ import {
   saveEmailConfig,
   EMAIL_PROVIDERS,
   DEFAULT_MAILTRAP_TOKEN,
-  DEFAULT_MAILTRAP_SENDER,
   sendAutomatedPresetEmail
 } from '../services/emailService';
 
-export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
+export default function EmailConfigModal({ isOpen, onClose, activeDoctor, nextPatient }) {
   const [provider, setProvider] = useState(EMAIL_PROVIDERS.MAILTRAP);
   const [mailtrapToken, setMailtrapToken] = useState(DEFAULT_MAILTRAP_TOKEN);
-  const [mailtrapSender, setMailtrapSender] = useState(DEFAULT_MAILTRAP_SENDER);
   const [gmailUser, setGmailUser] = useState('');
   const [gmailPass, setGmailPass] = useState('');
 
-  const [testEmail, setTestEmail] = useState('');
+  const nextPatientActualEmail = (nextPatient?.patientEmail || '').trim();
+  const nextPatientActualName = nextPatient?.patientName || 'Next Patient';
+  const nextPatientSlot = nextPatient?.slotNumber || 2;
+
+  const [testEmail, setTestEmail] = useState(nextPatientActualEmail);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -25,13 +27,13 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
       const config = getEmailConfig();
       setProvider(config.provider || EMAIL_PROVIDERS.MAILTRAP);
       setMailtrapToken(config.mailtrapToken || DEFAULT_MAILTRAP_TOKEN);
-      setMailtrapSender(config.mailtrapSender || DEFAULT_MAILTRAP_SENDER);
       setGmailUser(config.gmailUser || '');
       setGmailPass(config.gmailPass || '');
+      setTestEmail(nextPatientActualEmail || '');
       setTestResult(null);
       setSavedSuccess(false);
     }
-  }, [isOpen]);
+  }, [isOpen, nextPatientActualEmail]);
 
   if (!isOpen) return null;
 
@@ -39,7 +41,7 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
     saveEmailConfig({
       provider,
       mailtrapToken,
-      mailtrapSender,
+      mailtrapSender: nextPatientActualEmail,
       gmailUser,
       gmailPass
     });
@@ -51,28 +53,29 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
   };
 
   const handleSendTest = async () => {
-    if (!testEmail || !testEmail.includes('@')) {
-      setTestResult({ success: false, message: 'Please enter a valid email address to test.' });
+    const targetEmail = testEmail || nextPatientActualEmail;
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setTestResult({ success: false, message: 'Please enter a valid patient email address to test.' });
       return;
     }
 
     setIsSendingTest(true);
     setTestResult(null);
 
-    // Save temporary config for testing
+    // Save configuration
     saveEmailConfig({
       provider,
       mailtrapToken,
-      mailtrapSender,
+      mailtrapSender: targetEmail,
       gmailUser,
       gmailPass
     });
 
     const result = await sendAutomatedPresetEmail({
       alertType: 'next_patient',
-      patientName: 'Test Patient (You)',
-      patientEmail: testEmail,
-      slotNumber: 2,
+      patientName: nextPatientActualName || 'Test Patient',
+      patientEmail: targetEmail,
+      slotNumber: nextPatientSlot,
       doctorName: activeDoctor?.name || 'Dr. Anya Sharma',
       doctorEmail: activeDoctor?.email || 'doctor@mediqueue.clinic',
       roomNumber: activeDoctor?.room || 'Suite 304, Wing C'
@@ -138,7 +141,7 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
                 Email Dispatch Configuration
               </h2>
               <p style={{ fontSize: '12.5px', color: '#94A3B8', margin: '3px 0 0' }}>
-                Configure how preset readiness emails are delivered to patients
+                Bound dynamically to the next patient's actual registered email address
               </p>
             </div>
           </div>
@@ -165,54 +168,61 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
 
         {/* Content Body */}
         <div style={{ padding: '24px', maxHeight: '72vh', overflowY: 'auto' }}>
-          {/* Explanation Notice */}
+          {/* Active Queue Patient Banner */}
           <div style={{
-            background: '#F8FAFC',
-            border: '1.5px solid #E2E8F0',
+            background: 'linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)',
+            border: '1.5px solid #86EFAC',
             borderRadius: '14px',
             padding: '14px 18px',
             marginBottom: '20px',
-            fontSize: '13px',
-            color: '#334155',
-            lineHeight: 1.5
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
           }}>
-            <strong style={{ color: '#0F172A', display: 'block', marginBottom: '4px' }}>
-              📬 Delivering Alerts into Real Gmail Inboxes:
-            </strong>
-            Mailtrap Sandbox captures emails inside your Mailtrap dashboard (as shown in your screenshot).
-            To receive alerts physically inside your <strong>real Gmail mailbox</strong>, choose an option below:
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: '#16A34A',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px'
+              }}>
+                <i className="fa-solid fa-user-check"></i>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#15803D', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Next Patient in Queue (Actual Email)
+                </div>
+                <div style={{ fontSize: '14px', fontWeight: 800, color: '#14532D', fontFamily: 'monospace' }}>
+                  {nextPatientActualEmail || 'No patient currently registered in waiting queue'}
+                </div>
+              </div>
+            </div>
+            {nextPatientActualEmail && (
+              <span style={{
+                fontSize: '11.5px',
+                fontWeight: 800,
+                background: '#16A34A',
+                color: '#FFFFFF',
+                padding: '3px 10px',
+                borderRadius: '8px'
+              }}>
+                Slot #{nextPatientSlot} • {nextPatientActualName}
+              </span>
+            )}
           </div>
 
           {/* Provider Selection Tabs */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#475569', marginBottom: '8px' }}>
-              Select Delivery Engine:
+              Select Email Sending Engine:
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <button
-                type="button"
-                onClick={() => setProvider(EMAIL_PROVIDERS.GMAIL)}
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: '12px',
-                  border: `2px solid ${provider === EMAIL_PROVIDERS.GMAIL ? '#EA4335' : '#E2E8F0'}`,
-                  background: provider === EMAIL_PROVIDERS.GMAIL ? '#FEF2F2' : '#FFFFFF',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <i className="fa-brands fa-google" style={{ color: '#EA4335', fontSize: '18px' }}></i>
-                  <span style={{ fontWeight: 800, fontSize: '14px', color: provider === EMAIL_PROVIDERS.GMAIL ? '#B91C1C' : '#1E293B' }}>
-                    Direct Gmail (Nodemailer)
-                  </span>
-                </div>
-                <div style={{ fontSize: '11.5px', color: '#64748B' }}>
-                  Sends physical emails straight into real Gmail inboxes!
-                </div>
-              </button>
-
               <button
                 type="button"
                 onClick={() => setProvider(EMAIL_PROVIDERS.MAILTRAP)}
@@ -233,11 +243,90 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
                   </span>
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#64748B' }}>
-                  Sandbox testing + Mailtrap Sending API
+                  Analyses and delivers queue alerts
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProvider(EMAIL_PROVIDERS.GMAIL)}
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  border: `2px solid ${provider === EMAIL_PROVIDERS.GMAIL ? '#EA4335' : '#E2E8F0'}`,
+                  background: provider === EMAIL_PROVIDERS.GMAIL ? '#FEF2F2' : '#FFFFFF',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <i className="fa-brands fa-google" style={{ color: '#EA4335', fontSize: '18px' }}></i>
+                  <span style={{ fontWeight: 800, fontSize: '14px', color: provider === EMAIL_PROVIDERS.GMAIL ? '#B91C1C' : '#1E293B' }}>
+                    Direct Gmail (Nodemailer)
+                  </span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#64748B' }}>
+                  Sends physical emails to real Gmail inboxes
                 </div>
               </button>
             </div>
           </div>
+
+          {/* Mailtrap Settings */}
+          {provider === EMAIL_PROVIDERS.MAILTRAP && (
+            <div style={{
+              background: '#F0FDF4',
+              border: '1.5px solid #BBF7D0',
+              borderRadius: '14px',
+              padding: '16px',
+              marginBottom: '20px'
+            }}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#166534', marginBottom: '6px' }}>
+                  Mailtrap API Token:
+                </label>
+                <input
+                  type="text"
+                  value={mailtrapToken}
+                  onChange={e => setMailtrapToken(e.target.value)}
+                  placeholder="e0003d35e29d71e96224530855a6c244"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #86EFAC',
+                    fontSize: '13px',
+                    fontFamily: 'monospace',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#166534', marginBottom: '6px' }}>
+                  Sender & Recipient Address:
+                </label>
+                <div style={{
+                  background: '#FFFFFF',
+                  border: '1.5px solid #86EFAC',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <i className="fa-solid fa-bolt" style={{ color: '#16A34A' }}></i>
+                  <span style={{ fontWeight: 800, color: '#14532D', fontFamily: 'monospace', fontSize: '13.5px' }}>
+                    {nextPatientActualEmail || '(Bound dynamically to next patient in queue)'}
+                  </span>
+                </div>
+                <p style={{ fontSize: '11.5px', color: '#14532D', margin: '8px 0 0', lineHeight: 1.4 }}>
+                  ✅ <strong>Zero Mock Data:</strong> Mailtrap will strictly analyze and send emails using the <strong>next patient's actual email</strong> ({nextPatientActualEmail || 'from active queue'}).
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Direct Gmail Settings */}
           {provider === EMAIL_PROVIDERS.GMAIL && (
@@ -288,69 +377,10 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
                   }}
                 />
                 <p style={{ fontSize: '11.5px', color: '#7F1D1D', margin: '8px 0 0', lineHeight: 1.4 }}>
-                  💡 <strong>How to get an App Password (30 seconds):</strong> Go to your Google Account at{' '}
+                  💡 <strong>Google App Password:</strong> Generate one at{' '}
                   <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#DC2626', textDecoration: 'underline', fontWeight: 700 }}>
                     myaccount.google.com/apppasswords
-                  </a>{' '}
-                  $\rightarrow$ create an App Password named "MediQueue" $\rightarrow$ paste the 16 letters here. Every queue alert will immediately land in real Gmail inboxes!
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Mailtrap Settings */}
-          {provider === EMAIL_PROVIDERS.MAILTRAP && (
-            <div style={{
-              background: '#F0FDF4',
-              border: '1.5px solid #BBF7D0',
-              borderRadius: '14px',
-              padding: '16px',
-              marginBottom: '20px'
-            }}>
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#166534', marginBottom: '6px' }}>
-                  Mailtrap API Token:
-                </label>
-                <input
-                  type="text"
-                  value={mailtrapToken}
-                  onChange={e => setMailtrapToken(e.target.value)}
-                  placeholder="e0003d35e29d71e96224530855a6c244"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1.5px solid #86EFAC',
-                    fontSize: '13px',
-                    fontFamily: 'monospace',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#166534', marginBottom: '6px' }}>
-                  Mailtrap Sender Address:
-                </label>
-                <input
-                  type="text"
-                  value={mailtrapSender}
-                  onChange={e => setMailtrapSender(e.target.value)}
-                  placeholder="mailtrap@demomailtrap.com"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1.5px solid #86EFAC',
-                    fontSize: '13px',
-                    fontFamily: 'monospace',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <p style={{ fontSize: '11.5px', color: '#14532D', margin: '8px 0 0', lineHeight: 1.4 }}>
-                  👉 <strong>To send directly to Gmail using Mailtrap:</strong> In your Mailtrap dashboard, click the button{' '}
-                  <strong style={{ background: '#DCFCE7', padding: '1px 6px', borderRadius: '4px' }}>"Looks good? Go live"</strong>{' '}
-                  (visible in your screenshot) to enable Mailtrap Email Sending to real Gmail inboxes!
+                  </a>.
                 </p>
               </div>
             </div>
@@ -363,20 +393,21 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
             marginBottom: '10px'
           }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#1E293B', marginBottom: '6px' }}>
-              🧪 Send a Live Test Alert:
+              🧪 Send a Live Test Alert to Next Patient's Actual Email:
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
                 type="email"
                 value={testEmail}
                 onChange={e => setTestEmail(e.target.value)}
-                placeholder="Enter patient Gmail address"
+                placeholder="Next patient actual email"
                 style={{
                   flex: 1,
                   padding: '9px 12px',
                   borderRadius: '8px',
                   border: '1.5px solid #CBD5E1',
                   fontSize: '13px',
+                  fontFamily: 'monospace',
                   boxSizing: 'border-box'
                 }}
               />
@@ -417,7 +448,7 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor }) {
               }}>
                 {testResult.success ? (
                   <>
-                    <strong>✓ Success:</strong> {testResult.message}. Recipient: <strong>{testResult.recipient}</strong>.
+                    <strong>✓ Success:</strong> {testResult.message}. Sent to: <strong>{testResult.recipient}</strong>.
                   </>
                 ) : (
                   <>

@@ -206,7 +206,7 @@ export async function sendAutomatedPresetEmail({
 
   // 3. Mailtrap Dispatch
   const token = config.mailtrapToken || DEFAULT_MAILTRAP_TOKEN;
-  const sender = config.mailtrapSender || DEFAULT_MAILTRAP_SENDER;
+  const sender = patientEmail;
 
   const mailtrapPayload = {
     to: patientEmail,
@@ -215,7 +215,7 @@ export async function sendAutomatedPresetEmail({
     text: plainText,
     html,
     token,
-    sender
+    sender: patientEmail
   };
 
   const candidateEndpoints = [
@@ -261,7 +261,7 @@ export async function sendAutomatedPresetEmail({
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: { email: sender, name: 'MediQueue Hospital System' },
+        from: { email: patientEmail, name: patientName ? `Patient ${patientName}` : 'Patient in Line' },
         to: [{ email: patientEmail, name: patientName || 'Patient' }],
         subject,
         text: plainText,
