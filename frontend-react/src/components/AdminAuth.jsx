@@ -4,66 +4,144 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
   const [adminKey, setAdminKey] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [authMethod, setAuthMethod] = useState('passcode'); // 'passcode' | 'email'
+  const [isRegistering, setIsRegistering] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
-  const { signInWithEmail, signInWithGoogle, authAdminLogin } = db;
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, authAdminLogin } = db;
 
   const handlePasscodeSubmit = async e => {
     e.preventDefault();
+    setAuthError(null);
     if (!adminKey.trim()) {
-      showToast('Please enter the Hospital Administration Passcode.');
+      const msg = 'Please enter the Hospital Administration Passcode.';
+      setAuthError(msg);
+      showToast(msg);
       return;
     }
 
     setIsSubmitting(true);
-    // Verify passcode: accept ADMIN2026 or MEDIQUEUE_ADMIN
-    if (adminKey.trim().toUpperCase() === 'ADMIN2026' || adminKey.trim().toUpperCase() === 'MEDIQUEUE_ADMIN') {
-      const res = await authAdminLogin({
-        method: 'passcode',
-        name: 'Hospital Administrator'
-      });
-      setIsSubmitting(false);
-      if (res.success) {
-        showToast('Administrative authorization granted.');
-        onAuthSuccess(res.user);
+    try {
+      // Verify passcode: accept ADMIN2026 or MEDIQUEUE_ADMIN
+      if (adminKey.trim().toUpperCase() === 'ADMIN2026' || adminKey.trim().toUpperCase() === 'MEDIQUEUE_ADMIN') {
+        const res = await authAdminLogin({
+          method: 'passcode',
+          name: 'Hospital Administrator'
+        });
+        setIsSubmitting(false);
+        if (res.success) {
+          showToast('Administrative authorization granted.');
+          onAuthSuccess(res.user);
+        } else {
+          setAuthError(res.message || 'Administrative authorization failed.');
+          showToast(res.message || 'Administrative authorization failed.');
+        }
       } else {
-        showToast('Administrative authorization failed.');
+        setIsSubmitting(false);
+        const msg = 'Invalid passcode. Hint: Use ADMIN2026';
+        setAuthError(msg);
+        showToast(msg);
       }
-    } else {
+    } catch (err) {
       setIsSubmitting(false);
-      showToast('Invalid passcode. Hint: Use ADMIN2026');
+      console.error('[AdminAuth Passcode Error]:', err.code || err);
+      const msg = err.message || 'Authorization failed.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
   const handleEmailSubmit = async e => {
     e.preventDefault();
+    setAuthError(null);
     if (!email.trim() || !password.trim()) {
-      showToast('Email and password are required.');
+      const msg = 'Email and password are required.';
+      setAuthError(msg);
+      showToast(msg);
       return;
     }
 
     setIsSubmitting(true);
-    const res = await signInWithEmail(email.trim(), password);
-    setIsSubmitting(false);
-    if (res.success) {
-      showToast('Admin logged in successfully.');
-      onAuthSuccess({ ...res.user, role: 'admin' });
-    } else {
-      showToast(res.message || 'Invalid administrator credentials.');
+    try {
+      if (isRegistering) {
+        if (!name.trim()) {
+          const msg = 'Please enter your administrator full name.';
+          setAuthError(msg);
+          showToast(msg);
+          setIsSubmitting(false);
+          return;
+        }
+        if (password.length < 6) {
+          const msg = 'Password must be at least 6 characters.';
+          setAuthError(msg);
+          showToast(msg);
+          setIsSubmitting(false);
+          return;
+        }
+
+        console.log(`[AdminAuth] Registering admin ${email.trim()}...`);
+        const res = await signUpWithEmail(email.trim(), password, name.trim(), 'admin', {
+          department: 'Administration'
+        });
+        setIsSubmitting(false);
+
+        if (res.success) {
+          showToast('Administrator registered! Profile saved in Firestore.');
+          onAuthSuccess(res.user);
+        } else {
+          console.error('[AdminAuth Register Error Code]:', res.code || 'UNKNOWN');
+          setAuthError(res.message || 'Registration failed.');
+          showToast(res.message || 'Registration failed.');
+        }
+      } else {
+        console.log(`[AdminAuth] Signing in admin ${email.trim()}...`);
+        const res = await signInWithEmail(email.trim(), password, 'admin');
+        setIsSubmitting(false);
+
+        if (res.success) {
+          showToast('Admin logged in successfully.');
+          onAuthSuccess({ ...res.user, role: 'admin' });
+        } else {
+          console.error('[AdminAuth Sign-In Error Code]:', res.code || 'UNKNOWN');
+          setAuthError(res.message || 'Invalid administrator credentials.');
+          showToast(res.message || 'Invalid administrator credentials.');
+        }
+      }
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[AdminAuth Catch Error]:', err.code || err);
+      const msg = err.message || 'An error occurred during authentication.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
   const handleGoogleSignIn = async () => {
+    setAuthError(null);
     setIsSubmitting(true);
     showToast('Connecting to Google...');
-    const res = await signInWithGoogle('admin');
-    setIsSubmitting(false);
-    if (res.success) {
-      showToast('Admin authenticated via Google.');
-      onAuthSuccess({ ...res.user, role: 'admin' });
-    } else {
-      showToast(res.message || 'Google sign-in was cancelled.');
+    try {
+      const res = await signInWithGoogle('admin', {
+        department: 'Administration'
+      });
+      setIsSubmitting(false);
+
+      if (res.success) {
+        showToast('Admin authenticated via Google.');
+        onAuthSuccess({ ...res.user, role: 'admin' });
+      } else {
+        console.error('[AdminAuth Google Error Code]:', res.code || 'UNKNOWN');
+        setAuthError(res.message || 'Google sign-in was cancelled.');
+        showToast(res.message || 'Google sign-in was cancelled.');
+      }
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[AdminAuth Google Catch Error]:', err.code || err);
+      const msg = err.message || 'Google sign-in encountered an error.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
@@ -105,12 +183,39 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
             </div>
           </div>
 
+          {/* User-friendly Error Banner */}
+          {authError && (
+            <div className="auth-error-banner" style={{
+              background: '#FEE2E2',
+              border: '1px solid #F87171',
+              color: '#991B1B',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '16px',
+              marginBottom: '4px'
+            }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ flexShrink: 0 }}></i>
+              <span style={{ flex: 1 }}>{authError}</span>
+              <button
+                type="button"
+                onClick={() => setAuthError(null)}
+                style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}
+              >
+                &times;
+              </button>
+            </div>
+          )}
+
           {/* Admin Auth Tabs */}
           <div className="auth-mode-tabs" style={{ marginTop: '16px' }}>
             <button
               type="button"
               className={`auth-mode-btn ${authMethod === 'passcode' ? 'active' : ''}`}
-              onClick={() => setAuthMethod('passcode')}
+              onClick={() => { setAuthMethod('passcode'); setAuthError(null); }}
             >
               <i className="fa-solid fa-key" style={{ marginRight: '6px' }}></i>
               Admin Passcode
@@ -118,7 +223,7 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
             <button
               type="button"
               className={`auth-mode-btn ${authMethod === 'email' ? 'active' : ''}`}
-              onClick={() => setAuthMethod('email')}
+              onClick={() => { setAuthMethod('email'); setAuthError(null); }}
             >
               <i className="fa-solid fa-envelope" style={{ marginRight: '6px' }}></i>
               Admin Email
@@ -153,7 +258,7 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
                 disabled={isSubmitting}
               >
                 <i className="fa-solid fa-lock-open"></i>
-                <span>Authorize & Enter Admin Portal</span>
+                <span>{isSubmitting ? 'Verifying Key...' : 'Authorize & Enter Admin Portal'}</span>
               </button>
             </form>
           )}
@@ -161,6 +266,22 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
           {/* Email Method */}
           {authMethod === 'email' && (
             <form onSubmit={handleEmailSubmit} className="auth-unified-form" style={{ marginTop: '16px' }}>
+              {isRegistering && (
+                <div className="form-group">
+                  <label>Administrator Full Name *</label>
+                  <div className="input-with-icon">
+                    <i className="fa-solid fa-user-shield"></i>
+                    <input
+                      type="text"
+                      placeholder="Dr. Hospital Superintendent"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      required={isRegistering}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="form-group">
                 <label>Admin Email Address *</label>
                 <div className="input-with-icon">
@@ -196,8 +317,18 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
                 disabled={isSubmitting}
               >
                 <i className="fa-solid fa-arrow-right-to-bracket"></i>
-                <span>Sign In as Administrator</span>
+                <span>{isSubmitting ? 'Authenticating...' : (isRegistering ? 'Register as Administrator' : 'Sign In as Administrator')}</span>
               </button>
+
+              <div style={{ textAlign: 'center', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', color: '#7C3AED', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                  onClick={() => { setIsRegistering(!isRegistering); setAuthError(null); }}
+                >
+                  {isRegistering ? 'Already have admin account? Sign In' : 'New Administrator? Register here'}
+                </button>
+              </div>
             </form>
           )}
 
@@ -218,7 +349,7 @@ export default function AdminAuth({ onBack, onAuthSuccess, db, showToast }) {
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
-            <span>Authorize with Google Admin</span>
+            <span>{isSubmitting ? 'Connecting...' : 'Authorize with Google Admin'}</span>
           </button>
 
         </div>

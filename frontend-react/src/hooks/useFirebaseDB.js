@@ -33,7 +33,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   fbSignOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  getFriendlyAuthErrorMessage
 } from '../firebase';
 
 export function useFirebaseDB() {
@@ -193,132 +194,204 @@ export function useFirebaseDB() {
     return () => unsubAuth();
   }, []);
 
-  // Google Sign-In
-  const signInWithGoogle = useCallback(async (role = 'patient', extraData = {}) => {
+  // Google Sign-In via Popup
+  const signInWithGoogle = useCallback(async (preferredRole = 'patient', extraData = {}) => {
     try {
+      console.log(`[Firebase Auth] Initiating Google Sign-In popup (preferred role: ${preferredRole})...`);
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
+      console.log(`[Firebase Auth] Google Sign-In success: UID=${fbUser.uid}, Email=${fbUser.email}`);
+
       const userDocRef = doc(db, 'users', fbUser.uid);
       const userSnap = await getDoc(userDocRef);
       let profile;
+
       if (userSnap.exists()) {
-        profile = { ...userSnap.data(), role: role, ...extraData };
+        const existingData = userSnap.data();
+        profile = {
+          ...existingData,
+          uid: fbUser.uid,
+          name: fbUser.displayName || existingData.name || 'User',
+          email: fbUser.email || existingData.email || '',
+          photoURL: fbUser.photoURL || existingData.photoURL || '',
+          role: existingData.role || preferredRole,
+          lastLogin: serverTimestamp(),
+          ...extraData
+        };
         await setDoc(userDocRef, profile, { merge: true });
       } else {
         profile = {
           uid: fbUser.uid,
           name: fbUser.displayName || 'User',
           email: fbUser.email || '',
-          phone: fbUser.phoneNumber || '',
-          role: role,
+          photoURL: fbUser.photoURL || '',
+          phone: fbUser.phoneNumber || extraData.phone || '',
+          role: preferredRole,
           createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp(),
           ...extraData
         };
         await setDoc(userDocRef, profile, { merge: true });
       }
+
       localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
       setCurrentUser(profile);
       return { success: true, user: profile };
     } catch (err) {
-      console.error('[Google Sign-In Error]:', err);
-      return { success: false, message: err.message };
+      const friendlyMsg = getFriendlyAuthErrorMessage(err);
+      console.error(`[Firebase Auth Google Error] Code: ${err.code || 'UNKNOWN'} | Message:`, err.message);
+      return { success: false, code: err.code, message: friendlyMsg };
     }
   }, []);
 
   // Email & Password Sign-Up
   const signUpWithEmail = useCallback(async (email, password, name, role = 'patient', extraData = {}) => {
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
+      if (!email || !password) {
+        return { success: false, message: 'Please provide both an email and password.' };
+      }
+      if (password.length < 6) {
+        return { success: false, message: 'Password must be at least 6 characters long.' };
+      }
+      console.log(`[Firebase Auth] Registering user with email ${email} and role ${role}...`);
+      const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const fbUser = result.user;
+
       const profile = {
         uid: fbUser.uid,
-        name: name || 'User',
-        email: email,
+        name: name ? name.trim() : 'User',
+        email: email.trim(),
         phone: extraData.phone || '',
         role: role,
         createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
         ...extraData
       };
-      await setDoc(doc(db, 'users', fbUser.uid), profile, { merge: true });
+
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      await setDoc(userDocRef, profile, { merge: true });
       localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
       setCurrentUser(profile);
+      console.log(`[Firebase Auth] User profile saved to Firestore users/${fbUser.uid} successfully!`);
       return { success: true, user: profile };
     } catch (err) {
-      console.error('[Email Sign-Up Error]:', err);
-      return { success: false, message: err.message };
+      const friendlyMsg = getFriendlyAuthErrorMessage(err);
+      console.error(`[Firebase Auth Email Sign-Up Error] Code: ${err.code || 'UNKNOWN'} | Message:`, err.message);
+      return { success: false, code: err.code, message: friendlyMsg };
     }
   }, []);
 
   // Email & Password Sign-In
-  const signInWithEmail = useCallback(async (email, password) => {
+  const signInWithEmail = useCallback(async (email, password, expectedRole = null) => {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
+      if (!email || !password) {
+        return { success: false, message: 'Please enter your email and password.' };
+      }
+      console.log(`[Firebase Auth] Signing in user ${email}...`);
+      const result = await signInWithEmailAndPassword(auth, email.trim(), password);
       const fbUser = result.user;
-      const userSnap = await getDoc(doc(db, 'users', fbUser.uid));
-      const profile = userSnap.exists()
-        ? userSnap.data()
-        : { uid: fbUser.uid, name: fbUser.email, email: fbUser.email, role: 'patient' };
+
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const userSnap = await getDoc(userDocRef);
+
+      let profile;
+      if (userSnap.exists()) {
+        profile = {
+          ...userSnap.data(),
+          uid: fbUser.uid,
+          email: fbUser.email || userSnap.data().email || email.trim(),
+          lastLogin: serverTimestamp()
+        };
+        await setDoc(userDocRef, { lastLogin: serverTimestamp() }, { merge: true });
+      } else {
+        profile = {
+          uid: fbUser.uid,
+          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+          email: fbUser.email || email.trim(),
+          role: expectedRole || 'patient',
+          createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp()
+        };
+        await setDoc(userDocRef, profile, { merge: true });
+      }
+
       localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
       setCurrentUser(profile);
+      console.log(`[Firebase Auth] Sign in successful for ${profile.name} (${profile.role})`);
       return { success: true, user: profile };
     } catch (err) {
-      console.error('[Email Sign-In Error]:', err);
-      return { success: false, message: err.message };
+      const friendlyMsg = getFriendlyAuthErrorMessage(err);
+      console.error(`[Firebase Auth Email Sign-In Error] Code: ${err.code || 'UNKNOWN'} | Message:`, err.message);
+      return { success: false, code: err.code, message: friendlyMsg };
     }
   }, []);
 
   // Simulated OTP Authentication (preserves mock test flow with 1234)
   const signInWithSimulatedOtp = useCallback(async (phone, otp, role = 'patient', name = '', extraData = {}) => {
-    if (otp !== '1234') {
-      return { success: false, message: 'Invalid OTP. Please enter mock OTP 1234.' };
-    }
-    const cleanPhone = phone.trim();
-    const uid = `phone_${cleanPhone}`;
-    const profile = {
-      uid: uid,
-      phone: cleanPhone,
-      name: name || (role === 'doctor' ? 'Dr. Physician' : 'Patient User'),
-      email: `${cleanPhone}@phone.mediqueue.clinic`,
-      role: role,
-      createdAt: serverTimestamp(),
-      ...extraData
-    };
-
     try {
-      await setDoc(doc(db, 'users', uid), profile, { merge: true });
-    } catch (e) {
-      console.warn('[Firestore] Set user document offline/fallback:', e);
-    }
+      if (otp !== '1234') {
+        return { success: false, message: 'Invalid OTP. Please enter mock OTP 1234.' };
+      }
+      const cleanPhone = phone.trim();
+      const uid = `phone_${cleanPhone}`;
+      const profile = {
+        uid: uid,
+        phone: cleanPhone,
+        name: name.trim() || (role === 'doctor' ? 'Dr. Physician' : 'Patient User'),
+        email: `${cleanPhone}@phone.mediqueue.clinic`,
+        role: role,
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+        ...extraData
+      };
 
-    localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
-    setCurrentUser(profile);
-    return { success: true, user: profile };
+      try {
+        await setDoc(doc(db, 'users', uid), profile, { merge: true });
+      } catch (e) {
+        console.warn('[Firestore] Set user document offline/fallback:', e);
+      }
+
+      localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
+      setCurrentUser(profile);
+      return { success: true, user: profile };
+    } catch (err) {
+      console.error('[Simulated OTP Error]:', err);
+      return { success: false, message: err.message || 'OTP verification failed.' };
+    }
   }, []);
 
   // Admin Master Passcode Authorization
   const authAdminLogin = useCallback(async ({ method, name }) => {
-    const uid = `admin_${Date.now()}`;
-    const profile = {
-      uid,
-      name: name || 'Hospital Administrator',
-      email: 'admin@hospital.mediqueue.clinic',
-      role: 'admin',
-      createdAt: serverTimestamp()
-    };
     try {
-      await setDoc(doc(db, 'users', uid), profile, { merge: true });
-    } catch (e) {
-      console.warn('[Firestore] Set admin user offline/fallback:', e);
+      const uid = `admin_${Date.now()}`;
+      const profile = {
+        uid,
+        name: name || 'Hospital Administrator',
+        email: 'admin@hospital.mediqueue.clinic',
+        role: 'admin',
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp()
+      };
+      try {
+        await setDoc(doc(db, 'users', uid), profile, { merge: true });
+      } catch (e) {
+        console.warn('[Firestore] Set admin user offline/fallback:', e);
+      }
+      localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
+      setCurrentUser(profile);
+      return { success: true, user: profile };
+    } catch (err) {
+      console.error('[Admin Auth Error]:', err);
+      return { success: false, message: err.message || 'Admin authentication failed.' };
     }
-    localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
-    setCurrentUser(profile);
-    return { success: true, user: profile };
   }, []);
 
   const signOut = useCallback(async () => {
     try {
       await fbSignOut(auth);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[Firebase Auth] Sign out error:', e);
+    }
     localStorage.removeItem('mediqueue_firebase_auth_user');
     setCurrentUser(null);
   }, []);

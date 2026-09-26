@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -22,102 +23,141 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
 
   const handleEmailSubmit = async e => {
     e.preventDefault();
+    setAuthError(null);
     if (!email.trim() || !password.trim()) {
-      showToast('Email and password are required.');
+      const msg = 'Email and password are required.';
+      setAuthError(msg);
+      showToast(msg);
       return;
     }
 
     setIsSubmitting(true);
-    if (isRegistering) {
-      if (!name.trim()) {
-        showToast('Please enter your full clinician name.');
-        setIsSubmitting(false);
-        return;
-      }
-      const finalCode = (doctorCode.trim() || `DOC-${Math.floor(100 + Math.random() * 900)}`).toUpperCase();
+    try {
+      if (isRegistering) {
+        if (!name.trim()) {
+          const msg = 'Please enter your full clinician name.';
+          setAuthError(msg);
+          showToast(msg);
+          setIsSubmitting(false);
+          return;
+        }
+        if (password.length < 6) {
+          const msg = 'Password must be at least 6 characters.';
+          setAuthError(msg);
+          showToast(msg);
+          setIsSubmitting(false);
+          return;
+        }
 
-      // Sign up user with Firebase Auth and set role: "doctor"
-      const res = await signUpWithEmail(email.trim(), password, name.trim(), 'doctor', {
-        department,
-        doctorCode: finalCode,
-        age: parseInt(age, 10) || 40,
-        isAvailable: true
-      });
+        const finalCode = (doctorCode.trim() || `DOC-${Math.floor(100 + Math.random() * 900)}`).toUpperCase();
 
-      if (!res.success) {
-        setIsSubmitting(false);
-        showToast(res.message || 'Registration failed.');
-        return;
-      }
+        console.log(`[DoctorAuth] Registering doctor ${email.trim()} with code ${finalCode}...`);
+        // Sign up user with Firebase Auth and set role: "doctor"
+        const res = await signUpWithEmail(email.trim(), password, name.trim(), 'doctor', {
+          department,
+          doctorCode: finalCode,
+          age: parseInt(age, 10) || 40,
+          isAvailable: true
+        });
 
-      // Register doctor in the Firestore doctors collection
-      const newDocRecord = await registerDoctor({
-        doctorId: res.user.uid,
-        doctorCode: finalCode,
-        name: name.trim(),
-        department,
-        age: parseInt(age, 10) || 40,
-        isAvailable: true
-      });
+        if (!res.success) {
+          setIsSubmitting(false);
+          console.error('[DoctorAuth Register Error Code]:', res.code || 'UNKNOWN');
+          setAuthError(res.message || 'Registration failed.');
+          showToast(res.message || 'Registration failed.');
+          return;
+        }
 
-      setIsSubmitting(false);
-      showToast(`Dr. ${name.trim()} onboarded with code ${finalCode}!`);
-      onAuthSuccess(res.user, newDocRecord);
-    } else {
-      const res = await signInWithEmail(email.trim(), password);
-      setIsSubmitting(false);
-      if (res.success) {
-        // Find matching doctor record from doctors collection
-        const matchedDoc = doctors.find(
-          d => d.doctorId === res.user.uid || (res.user.doctorCode && d.doctorCode?.toUpperCase() === res.user.doctorCode.toUpperCase())
-        ) || {
+        // Register doctor in the Firestore doctors collection
+        const newDocRecord = await registerDoctor({
           doctorId: res.user.uid,
-          doctorCode: res.user.doctorCode || 'DOC-101',
-          name: res.user.name || 'Dr. Clinician',
-          department: res.user.department || 'General Medicine'
-        };
+          doctorCode: finalCode,
+          name: name.trim(),
+          department,
+          age: parseInt(age, 10) || 40,
+          isAvailable: true
+        });
 
-        showToast(`Welcome back, ${matchedDoc.name}!`);
-        onAuthSuccess(res.user, matchedDoc);
+        setIsSubmitting(false);
+        showToast(`Dr. ${name.trim()} onboarded with code ${finalCode}!`);
+        onAuthSuccess(res.user, newDocRecord);
       } else {
-        showToast(res.message || 'Invalid email or password.');
+        console.log(`[DoctorAuth] Signing in doctor ${email.trim()}...`);
+        const res = await signInWithEmail(email.trim(), password, 'doctor');
+        setIsSubmitting(false);
+
+        if (res.success) {
+          // Find matching doctor record from doctors collection
+          const matchedDoc = doctors.find(
+            d => d.doctorId === res.user.uid || (res.user.doctorCode && d.doctorCode?.toUpperCase() === res.user.doctorCode.toUpperCase())
+          ) || {
+            doctorId: res.user.uid,
+            doctorCode: res.user.doctorCode || 'DOC-101',
+            name: res.user.name || 'Dr. Clinician',
+            department: res.user.department || 'General Medicine'
+          };
+
+          showToast(`Welcome back, ${matchedDoc.name}!`);
+          onAuthSuccess({ ...res.user, role: 'doctor' }, matchedDoc);
+        } else {
+          console.error('[DoctorAuth Sign-In Error Code]:', res.code || 'UNKNOWN');
+          setAuthError(res.message || 'Invalid email or password.');
+          showToast(res.message || 'Invalid email or password.');
+        }
       }
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[DoctorAuth Catch Error]:', err.code || err);
+      const msg = err.message || 'An error occurred during authentication.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
   const handleGoogleSignIn = async () => {
+    setAuthError(null);
     setIsSubmitting(true);
     showToast('Connecting to Google...');
-    const finalCode = (doctorCode.trim() || `DOC-${Math.floor(100 + Math.random() * 900)}`).toUpperCase();
-    const res = await signInWithGoogle('doctor', {
-      department,
-      doctorCode: finalCode,
-      isAvailable: true
-    });
+    try {
+      const finalCode = (doctorCode.trim() || `DOC-${Math.floor(100 + Math.random() * 900)}`).toUpperCase();
+      const res = await signInWithGoogle('doctor', {
+        department,
+        doctorCode: finalCode,
+        isAvailable: true
+      });
 
-    if (res.success) {
-      // Check if this doctor is already in doctors collection
-      let matchedDoc = doctors.find(
-        d => d.doctorId === res.user.uid || d.doctorCode?.toUpperCase() === finalCode
-      );
+      if (res.success) {
+        // Check if this doctor is already in doctors collection
+        let matchedDoc = doctors.find(
+          d => d.doctorId === res.user.uid || d.doctorCode?.toUpperCase() === finalCode
+        );
 
-      if (!matchedDoc) {
-        matchedDoc = await registerDoctor({
-          doctorId: res.user.uid,
-          doctorCode: finalCode,
-          name: res.user.name,
-          department,
-          age: 40,
-          isAvailable: true
-        });
+        if (!matchedDoc) {
+          matchedDoc = await registerDoctor({
+            doctorId: res.user.uid,
+            doctorCode: finalCode,
+            name: res.user.name,
+            department,
+            age: 40,
+            isAvailable: true
+          });
+        }
+
+        setIsSubmitting(false);
+        showToast(`Clinician authenticated: ${res.user.name}`);
+        onAuthSuccess({ ...res.user, role: 'doctor' }, matchedDoc);
+      } else {
+        setIsSubmitting(false);
+        console.error('[DoctorAuth Google Error Code]:', res.code || 'UNKNOWN');
+        setAuthError(res.message || 'Google sign-in was cancelled.');
+        showToast(res.message || 'Google sign-in was cancelled.');
       }
-
+    } catch (err) {
       setIsSubmitting(false);
-      showToast(`Clinician authenticated: ${res.user.name}`);
-      onAuthSuccess(res.user, matchedDoc);
-    } else {
-      setIsSubmitting(false);
-      showToast(res.message || 'Google sign-in was cancelled.');
+      console.error('[DoctorAuth Google Catch Error]:', err.code || err);
+      const msg = err.message || 'Google sign-in encountered an error.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
@@ -159,12 +199,39 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
             </div>
           </div>
 
+          {/* User-friendly Error Banner */}
+          {authError && (
+            <div className="auth-error-banner" style={{
+              background: '#FEE2E2',
+              border: '1px solid #F87171',
+              color: '#991B1B',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '16px',
+              marginBottom: '4px'
+            }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ flexShrink: 0 }}></i>
+              <span style={{ flex: 1 }}>{authError}</span>
+              <button
+                type="button"
+                onClick={() => setAuthError(null)}
+                style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}
+              >
+                &times;
+              </button>
+            </div>
+          )}
+
           {/* Clinician Auth Switcher */}
           <div className="auth-mode-tabs" style={{ marginTop: '16px' }}>
             <button
               type="button"
               className={`auth-mode-btn ${!isRegistering ? 'active' : ''}`}
-              onClick={() => setIsRegistering(false)}
+              onClick={() => { setIsRegistering(false); setAuthError(null); }}
             >
               <i className="fa-solid fa-right-to-bracket" style={{ marginRight: '6px' }}></i>
               Doctor Sign In
@@ -172,7 +239,7 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
             <button
               type="button"
               className={`auth-mode-btn ${isRegistering ? 'active' : ''}`}
-              onClick={() => setIsRegistering(true)}
+              onClick={() => { setIsRegistering(true); setAuthError(null); }}
             >
               <i className="fa-solid fa-user-plus" style={{ marginRight: '6px' }}></i>
               Onboard Clinician
@@ -284,7 +351,7 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
               disabled={isSubmitting}
             >
               <i className="fa-solid fa-arrow-right-to-bracket"></i>
-              <span>{isRegistering ? 'Register & Enter Doctor Suite' : 'Sign In to Doctor Suite'}</span>
+              <span>{isSubmitting ? 'Authenticating...' : (isRegistering ? 'Register & Enter Doctor Suite' : 'Sign In to Doctor Suite')}</span>
             </button>
           </form>
 
@@ -305,7 +372,7 @@ export default function DoctorAuth({ onBack, onAuthSuccess, db, showToast }) {
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
-            <span>Continue with Google</span>
+            <span>{isSubmitting ? 'Connecting...' : 'Continue with Google'}</span>
           </button>
 
         </div>

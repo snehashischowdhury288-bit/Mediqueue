@@ -5,6 +5,7 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
   const [authMethod, setAuthMethod] = useState('otp'); // 'otp' | 'email'
   const [isRegistering, setIsRegistering] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   // Form Fields
   const [phone, setPhone] = useState('');
@@ -21,8 +22,11 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
 
   // Handle OTP Dispatch
   const handleGetOtp = () => {
+    setAuthError(null);
     if (!phone || !/^\d{10}$/.test(phone.trim())) {
-      showToast('Please enter a valid 10-digit mobile number.');
+      const msg = 'Please enter a valid 10-digit mobile number.';
+      setAuthError(msg);
+      showToast(msg);
       return;
     }
     setShowOtpModal(true);
@@ -37,80 +41,133 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
   };
 
   const handleVerifyOtp = async code => {
+    setAuthError(null);
     const finalOtp = code || otp;
     if (finalOtp !== '1234') {
-      showToast('Invalid OTP. Please enter mock OTP 1234.');
+      const msg = 'Invalid OTP. Please enter mock OTP 1234.';
+      setAuthError(msg);
+      showToast(msg);
       return;
     }
 
     setIsSubmitting(true);
-    const patName = name.trim() || 'Patient User';
-    const res = await signInWithSimulatedOtp(phone, finalOtp, 'patient', patName, {
-      age: parseInt(age, 10) || 30,
-      priorityCategory: priorityCategory || 'none'
-    });
-    setIsSubmitting(false);
+    try {
+      const patName = name.trim() || 'Patient User';
+      const res = await signInWithSimulatedOtp(phone, finalOtp, 'patient', patName, {
+        age: parseInt(age, 10) || 30,
+        priorityCategory: priorityCategory || 'none'
+      });
+      setIsSubmitting(false);
 
-    if (res.success) {
-      showToast('Patient verified & profile saved to Firestore!');
-      onAuthSuccess(res.user);
-    } else {
-      showToast(res.message || 'Verification failed.');
+      if (res.success) {
+        showToast('Patient verified & profile saved to Firestore!');
+        onAuthSuccess(res.user);
+      } else {
+        setAuthError(res.message || 'Verification failed.');
+        showToast(res.message || 'Verification failed.');
+      }
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[PatientAuth OTP Error]:', err.code || err);
+      const msg = err.message || 'Failed to authenticate with OTP.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
   // Handle Email Auth
   const handleEmailSubmit = async e => {
     e.preventDefault();
+    setAuthError(null);
     if (!email.trim() || !password.trim()) {
-      showToast('Email and password are required.');
+      const msg = 'Email and password are required.';
+      setAuthError(msg);
+      showToast(msg);
       return;
     }
 
     setIsSubmitting(true);
-    if (isRegistering) {
-      if (!name.trim()) {
-        showToast('Please enter your full name.');
+    try {
+      if (isRegistering) {
+        if (!name.trim()) {
+          const msg = 'Please enter your full patient name.';
+          setAuthError(msg);
+          showToast(msg);
+          setIsSubmitting(false);
+          return;
+        }
+        if (password.length < 6) {
+          const msg = 'Password must be at least 6 characters.';
+          setAuthError(msg);
+          showToast(msg);
+          setIsSubmitting(false);
+          return;
+        }
+
+        console.log(`[PatientAuth] Registering patient ${email.trim()}...`);
+        const res = await signUpWithEmail(email.trim(), password, name.trim(), 'patient', {
+          age: parseInt(age, 10) || 30,
+          phone: phone.trim(),
+          priorityCategory: priorityCategory || 'none'
+        });
         setIsSubmitting(false);
-        return;
-      }
-      const res = await signUpWithEmail(email.trim(), password, name.trim(), 'patient', {
-        age: parseInt(age, 10) || 30,
-        phone: phone.trim(),
-        priorityCategory: priorityCategory || 'none'
-      });
-      setIsSubmitting(false);
-      if (res.success) {
-        showToast('Account registered! Profile saved in Firestore.');
-        onAuthSuccess(res.user);
+
+        if (res.success) {
+          showToast('Account registered! Profile saved in Firestore.');
+          onAuthSuccess(res.user);
+        } else {
+          console.error('[PatientAuth Register Error Code]:', res.code || 'UNKNOWN');
+          setAuthError(res.message || 'Registration failed.');
+          showToast(res.message || 'Registration failed.');
+        }
       } else {
-        showToast(res.message || 'Registration failed.');
+        console.log(`[PatientAuth] Signing in patient ${email.trim()}...`);
+        const res = await signInWithEmail(email.trim(), password, 'patient');
+        setIsSubmitting(false);
+
+        if (res.success) {
+          showToast('Patient signed in successfully.');
+          onAuthSuccess(res.user);
+        } else {
+          console.error('[PatientAuth Sign-In Error Code]:', res.code || 'UNKNOWN');
+          setAuthError(res.message || 'Invalid email or password.');
+          showToast(res.message || 'Invalid email or password.');
+        }
       }
-    } else {
-      const res = await signInWithEmail(email.trim(), password);
+    } catch (err) {
       setIsSubmitting(false);
-      if (res.success) {
-        showToast('Patient signed in successfully.');
-        onAuthSuccess(res.user);
-      } else {
-        showToast(res.message || 'Invalid credentials.');
-      }
+      console.error('[PatientAuth Email Error]:', err.code || err);
+      const msg = err.message || 'An error occurred during authentication.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
   // Handle Google Auth
   const handleGoogleSignIn = async () => {
+    setAuthError(null);
     setIsSubmitting(true);
     showToast('Connecting to Google...');
-    const res = await signInWithGoogle('patient', {
-      priorityCategory: priorityCategory || 'none'
-    });
-    setIsSubmitting(false);
-    if (res.success) {
-      showToast(`Welcome, ${res.user.name}!`);
-      onAuthSuccess(res.user);
-    } else {
-      showToast(res.message || 'Google sign-in was cancelled.');
+    try {
+      const res = await signInWithGoogle('patient', {
+        priorityCategory: priorityCategory || 'none'
+      });
+      setIsSubmitting(false);
+
+      if (res.success) {
+        showToast(`Welcome, ${res.user.name}!`);
+        onAuthSuccess(res.user);
+      } else {
+        console.error('[PatientAuth Google Error Code]:', res.code || 'UNKNOWN');
+        setAuthError(res.message || 'Google sign-in was cancelled.');
+        showToast(res.message || 'Google sign-in was cancelled.');
+      }
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[PatientAuth Google Catch Error]:', err.code || err);
+      const msg = err.message || 'Google sign-in encountered an error.';
+      setAuthError(msg);
+      showToast(msg);
     }
   };
 
@@ -152,12 +209,39 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
             </div>
           </div>
 
+          {/* User-friendly Error Banner */}
+          {authError && (
+            <div className="auth-error-banner" style={{
+              background: '#FEE2E2',
+              border: '1px solid #F87171',
+              color: '#991B1B',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '16px',
+              marginBottom: '4px'
+            }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ flexShrink: 0 }}></i>
+              <span style={{ flex: 1 }}>{authError}</span>
+              <button
+                type="button"
+                onClick={() => setAuthError(null)}
+                style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}
+              >
+                &times;
+              </button>
+            </div>
+          )}
+
           {/* Authentication Mode Switcher */}
           <div className="auth-mode-tabs" style={{ marginTop: '16px' }}>
             <button
               type="button"
               className={`auth-mode-btn ${authMethod === 'otp' ? 'active' : ''}`}
-              onClick={() => setAuthMethod('otp')}
+              onClick={() => { setAuthMethod('otp'); setAuthError(null); }}
             >
               <i className="fa-solid fa-mobile-screen" style={{ marginRight: '6px' }}></i>
               Mobile OTP (1234)
@@ -165,7 +249,7 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
             <button
               type="button"
               className={`auth-mode-btn ${authMethod === 'email' ? 'active' : ''}`}
-              onClick={() => setAuthMethod('email')}
+              onClick={() => { setAuthMethod('email'); setAuthError(null); }}
             >
               <i className="fa-solid fa-envelope" style={{ marginRight: '6px' }}></i>
               Email & Password
@@ -260,7 +344,7 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
                 disabled={isSubmitting}
               >
                 <i className="fa-solid fa-arrow-right-to-bracket"></i>
-                <span>Verify OTP & Enter Patient Portal</span>
+                <span>{isSubmitting ? 'Verifying...' : 'Verify OTP & Enter Patient Portal'}</span>
               </button>
             </div>
           )}
@@ -359,14 +443,14 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
                 disabled={isSubmitting}
               >
                 <i className="fa-solid fa-arrow-right-to-bracket"></i>
-                <span>{isRegistering ? 'Register as Patient' : 'Sign In as Patient'}</span>
+                <span>{isSubmitting ? 'Authenticating...' : (isRegistering ? 'Register as Patient' : 'Sign In as Patient')}</span>
               </button>
 
               <div style={{ textAlign: 'center', marginTop: '6px' }}>
                 <button
                   type="button"
                   style={{ background: 'none', border: 'none', color: '#3E69FE', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                  onClick={() => setIsRegistering(!isRegistering)}
+                  onClick={() => { setIsRegistering(!isRegistering); setAuthError(null); }}
                 >
                   {isRegistering ? 'Already registered? Sign In' : "New patient? Register here"}
                 </button>
@@ -391,7 +475,7 @@ export default function PatientAuth({ onBack, onAuthSuccess, db, showToast }) {
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
-            <span>Continue with Google</span>
+            <span>{isSubmitting ? 'Connecting...' : 'Continue with Google'}</span>
           </button>
 
         </div>

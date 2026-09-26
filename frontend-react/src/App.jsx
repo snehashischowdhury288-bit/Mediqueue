@@ -88,10 +88,20 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Auth Success Callbacks
+  // Auth Success Callbacks with strict role verification and immediate portal redirection
   const handlePatientAuthSuccess = userProfile => {
     setCurrentUser(userProfile);
-    navigateTo('patient');
+    const role = (userProfile.role || '').toLowerCase();
+    if (role === 'doctor') {
+      navigateTo('doctor');
+      showToast(`Welcome Dr. ${userProfile.name}! Redirected to Doctor Dashboard.`);
+    } else if (role === 'admin') {
+      navigateTo('admin');
+      showToast(`Welcome Administrator! Redirected to Admin Console.`);
+    } else {
+      navigateTo('patient');
+      showToast(`Welcome ${userProfile.name || 'Patient'} to Patient Portal!`);
+    }
   };
 
   const handleDoctorAuthSuccess = (userProfile, doctorRecord) => {
@@ -99,12 +109,32 @@ export default function App() {
     if (doctorRecord) {
       setSelectedDoctor(doctorRecord);
     }
-    navigateTo('doctor');
+    const role = (userProfile.role || '').toLowerCase();
+    if (role === 'admin') {
+      navigateTo('admin');
+      showToast(`Welcome Administrator! Redirected to Admin Console.`);
+    } else if (role === 'patient') {
+      navigateTo('patient');
+      showToast(`Signed in as Patient account. Redirecting to Patient Portal.`);
+    } else {
+      navigateTo('doctor');
+      showToast(`Welcome Dr. ${userProfile.name || doctorRecord?.name || 'Doctor'} to Doctor Suite!`);
+    }
   };
 
   const handleAdminAuthSuccess = userProfile => {
     setCurrentUser(userProfile);
-    navigateTo('admin');
+    const role = (userProfile.role || '').toLowerCase();
+    if (role === 'doctor') {
+      navigateTo('doctor');
+      showToast(`Signed in as Clinician. Redirecting to Doctor Suite.`);
+    } else if (role === 'patient') {
+      navigateTo('patient');
+      showToast(`Signed in as Patient. Redirecting to Patient Portal.`);
+    } else {
+      navigateTo('admin');
+      showToast('Welcome to Hospital Administration Console!');
+    }
   };
 
   const handleSignOutUser = async () => {
