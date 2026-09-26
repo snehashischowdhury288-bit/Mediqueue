@@ -754,6 +754,27 @@ export function useFirebaseDB() {
     });
   }, [appointments]);
 
+  // Mark notificationSent: true on appointment to prevent duplicate alerts
+  const markNotificationSent = useCallback(async appointmentId => {
+    if (!appointmentId) return;
+    setAppointments(prev => prev.map(a => {
+      if (a.id === appointmentId || a.appointmentId === appointmentId) {
+        return { ...a, notificationSent: true };
+      }
+      return a;
+    }));
+
+    try {
+      const aptDocRef = doc(db, 'appointments', appointmentId);
+      await updateDoc(aptDocRef, {
+        notificationSent: true,
+        notificationSentAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.warn('[Firestore] Failed to persist notificationSent:', err);
+    }
+  }, []);
+
   // Purge all collections from Firestore
   const purgeAllData = useCallback(async () => {
     try {
@@ -882,6 +903,7 @@ export function useFirebaseDB() {
     completeConsultation,
     skipPatient,
     markNoShow,
+    markNotificationSent,
     purgeAllData,
     getAdminTelemetry,
     dbError

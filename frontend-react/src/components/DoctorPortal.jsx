@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+const WEB3FORMS_ACCESS_KEY = '7cbd2b0b-6fba-43be-993c-471ab95e28a4';
 
 export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user }) {
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
   const [selectedBatchId, setSelectedBatchId] = useState('b1'); // 'b1' (Morning) | 'b2' (Evening)
   const [timerSeconds, setTimerSeconds] = useState(0);
+  const [emailAlertBanner, setEmailAlertBanner] = useState(null);
+  const sentAlertsRef = useRef(new Set());
 
-  const { appointments, callNext, completeConsultation, skipPatient, markNoShow } = db;
+  const { appointments, callNext, completeConsultation, skipPatient, markNoShow, markNotificationSent } = db;
 
   // Resolve active doctor strictly prioritizing real logged-in clinician credentials
   const activeDoctor = doctor || (
@@ -96,6 +100,159 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
     const s = (secs % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
+  };
+
+  // =========================================================================
+  // AUTOMATED "3 TURNS AWAY" WEB3FORMS NOTIFICATION WORKFLOW
+  // Access Key: 7cbd2b0b-6fba-43be-993c-471ab95e28a4
+  // Endpoint: https://api.web3forms.com/submit
+  // Trigger: Evaluated dynamically whenever a consultation completes or advances
+  // =========================================================================
+
+  const sendThreeTurnsEmail = useCallback(async (patient, clinicianName) => {
+    if (!patient) return false;
+    const patientEmail = (patient.patientEmail || '').trim();
+    if (!patientEmail || !patientEmail.includes('@')) {
+      console.warn('[Web3Forms] Cannot send 3-turns alert: patient email missing or invalid:', patient);
+      return false;
+    }
+
+    const aptId = patient.id || patient.appointmentId;
+    if (patient.notificationSent || sentAlertsRef.current.has(aptId)) {
+      return false;
+    }
+
+    // Immediately record locally to prevent race condition or duplicate bursts
+    sentAlertsRef.current.add(aptId);
+
+    const docDisplayName = clinicianName || activeDoctor?.name || 'your Clinician';
+    const patientDisplayName = patient.patientName || 'Patient';
+
+    const payload = {
+      access_key: WEB3FORMS_ACCESS_KEY,
+      to_email: patientEmail,
+      email: patientEmail,
+      subject: 'MediQueue Urgent Update: You are 3 turns away from your consultation',
+      name: 'MediQueue Hospital System',
+      message: `Hello ${patientDisplayName}, Dr. ${docDisplayName} has completed the previous consultation. You are now 3 turns away in the queue. Please arrive at the waiting area outside the clinic room immediately and prepare your digital token.`
+    };
+
+    console.log(`[Web3Forms] Dispatching 3-turns alert to ${patientEmail} for ${patientDisplayName}...`);
+
+    try {
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const resData = await response.json().catch(() => null);
+      console.log('[Web3Forms] Submission status:', resData);
+
+      // Persist notificationSent flag to Firestore to prevent duplicate alerts
+      if (markNotificationSent) {
+        await markNotificationSent(aptId);
+      }
+
+      // Visual confirmation banner on Doctor Portal
+      setEmailAlertBanner({
+        patientName: patientDisplayName,
+        email: patientEmail,
+        slotNumber: patient.slotNumber,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+
+      // Auto-hide confirmation banner after 8 seconds
+      setTimeout(() => {
+        setEmailAlertBanner(curr => (curr?.patientName === patientDisplayName ? null : curr));
+      }, 8000);
+
+      return true;
+    } catch (err) {
+      console.error('[Web3Forms] Error submitting notification:', err);
+      if (markNotificationSent) {
+        await markNotificationSent(aptId);
+      }
+      return false;
+    }
+  }, [activeDoctor?.name, markNotificationSent]);
+
+  // Evaluates queue distance and triggers the 3-turns-away alert
+  const evaluateThreeTurnsThreshold = useCallback((currentApts, targetBatch) => {
+    const bId = targetBatch || selectedBatchId || 'b1';
+    const docCode = currentDocCode;
+    const docId = currentDocId;
+
+    // Filter appointments for the active clinician and active batch
+    const batchList = currentApts
+      .filter(
+        a => (a.doctorId === docId || a.doctorCode?.toUpperCase() === docCode) &&
+             (a.batchId || 'b1') === bId
+      )
+      .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
+
+    const activeApt = batchList.find(a => a.status === 'in_consultation');
+    const waitingApts = batchList.filter(a => a.status === 'waiting');
+
+    if (waitingApts.length === 0) return null;
+
+    // Distance Calculation:
+    // If active consultation exists (Turn 1):
+    // - waitingApts[0] is Turn 2
+    // - waitingApts[1] is Turn 3 (3 turns away!)
+    //   e.g. When patient #3 is active, patient #5 (slot 5 - slot 3 === 2, waiting[1]) is 3 turns away!
+    // If no active consultation yet (idle suite right after completion):
+    // - waitingApts[0] is Turn 1
+    // - waitingApts[1] is Turn 2
+    // - waitingApts[2] is Turn 3 (3 turns away!)
+    let targetPatient = null;
+    if (activeApt) {
+      targetPatient = waitingApts.find(w => (w.slotNumber - activeApt.slotNumber === 2)) || waitingApts[1];
+    } else {
+      targetPatient = waitingApts[2];
+    }
+
+    if (targetPatient) {
+      const aptKey = targetPatient.id || targetPatient.appointmentId;
+      if (!targetPatient.notificationSent && !sentAlertsRef.current.has(aptKey)) {
+        console.log(`[3-Turns Trigger] Candidate identified: ${targetPatient.patientName} (Slot #${targetPatient.slotNumber})`);
+        sendThreeTurnsEmail(targetPatient, activeDoctor?.name);
+      }
+    }
+  }, [currentDocCode, currentDocId, selectedBatchId, sendThreeTurnsEmail, activeDoctor?.name]);
+
+  // Reactive Queue Watcher: Trigger evaluation whenever an appointment status updates to "completed"
+  const prevCompletedCount = useRef(completedPatients.length);
+
+  useEffect(() => {
+    if (completedPatients.length > prevCompletedCount.current) {
+      console.log('[Queue State Event] Completed consultation detected. Evaluating 3-turns threshold...');
+      evaluateThreeTurnsThreshold(appointments, selectedBatchId);
+    }
+    prevCompletedCount.current = completedPatients.length;
+  }, [completedPatients.length, appointments, selectedBatchId, evaluateThreeTurnsThreshold]);
+
+  // Action Handlers
+  const handleCompleteConsultation = async () => {
+    if (!inConsultation) return;
+    const batchId = inConsultation.batchId || selectedBatchId || 'b1';
+
+    await completeConsultation(activeDoctor?.doctorId || activeDoctor?.doctorCode);
+
+    // Promptly evaluate upcoming queue distance
+    setTimeout(() => {
+      evaluateThreeTurnsThreshold(appointments, batchId);
+    }, 400);
+  };
+
+  const handleCallNext = async () => {
+    await callNext(activeDoctor?.doctorId || activeDoctor?.doctorCode);
+    setTimeout(() => {
+      evaluateThreeTurnsThreshold(appointments, selectedBatchId);
+    }, 400);
   };
 
   // Helper to format priority badge
@@ -422,7 +579,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                     <button
                       type="button"
                       className="btn-complete-exam"
-                      onClick={() => completeConsultation(doctor.doctorId || doctor.doctorCode)}
+                      onClick={handleCompleteConsultation}
                       title="Mark consultation completed and record cured patient"
                     >
                       <i className="fa-solid fa-circle-check"></i>
@@ -453,7 +610,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                   <button
                     type="button"
                     className="btn-call-next-hero"
-                    onClick={() => callNext(doctor.doctorId || doctor.doctorCode)}
+                    onClick={handleCallNext}
                     disabled={waitingPatients.length === 0}
                   >
                     <i className="fa-solid fa-bell"></i>
@@ -462,6 +619,54 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                 )}
               </div>
             </section>
+
+            {/* Confirmation Banner for Automated 3-Turns-Away Web3Forms Alert */}
+            {emailAlertBanner && (
+              <div className="email-alert-banner" style={{
+                background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                border: '1.5px solid #10B981',
+                borderRadius: '16px',
+                padding: '14px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '20px',
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.15)',
+                animation: 'fadeInDown 0.3s ease'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: '#10B981',
+                    color: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '17px'
+                  }}>
+                    <i className="fa-solid fa-paper-plane"></i>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#065F46', fontSize: '14px' }}>
+                      Automated "3-turns-away" email alert sent to {emailAlertBanner.patientName} (Slot #{emailAlertBanner.slotNumber})
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#047857' }}>
+                      Recipient: <strong>{emailAlertBanner.email}</strong> • Dispatched via Web3Forms Cloud at {emailAlertBanner.time}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEmailAlertBanner(null)}
+                  style={{ background: 'transparent', border: 'none', color: '#065F46', cursor: 'pointer', fontSize: '16px' }}
+                  title="Dismiss notification banner"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            )}
 
             {/* ========================================================================= */}
             {/* 2. ALL 5 BATCH SLOTS VISUAL GRID (STRUCTURED ROW/GRID LAYOUT)            */}
@@ -593,10 +798,26 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
                           </div>
                         </div>
 
-                        <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #F1F5F9' }}>
+                        <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                           <span style={{ fontSize: '11.5px', color: '#3E69FE', fontWeight: 700 }}>
                             <i className="fa-solid fa-clock" style={{ marginRight: '4px' }}></i>In Queue Line
                           </span>
+                          {appointmentOnSlot.notificationSent && (
+                            <span style={{
+                              fontSize: '10.5px',
+                              fontWeight: 800,
+                              color: '#059669',
+                              background: '#ECFDF5',
+                              border: '1px solid #A7F3D0',
+                              padding: '2px 6px',
+                              borderRadius: '6px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <i className="fa-solid fa-envelope-circle-check"></i> Alert Sent
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
