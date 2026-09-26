@@ -217,12 +217,88 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor, nextPa
             )}
           </div>
 
+          {/* Real Inbox Delivery Notice */}
+          <div style={{
+            background: '#EFF6FF',
+            border: '1.5px solid #93C5FD',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            marginBottom: '18px',
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'flex-start'
+          }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: '#2563EB',
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '15px',
+              flexShrink: 0
+            }}>
+              <i className="fa-solid fa-envelope-open-text"></i>
+            </div>
+            <div style={{ fontSize: '12px', color: '#1E40AF', lineHeight: '1.5' }}>
+              <strong style={{ fontSize: '13px', color: '#1E3A8A' }}>Want alerts delivered to your real Gmail App?</strong>
+              <div style={{ marginTop: '4px' }}>
+                Mailtrap Sandbox is a test suite that holds emails safely inside its web dashboard. For emails to arrive physically in a real Gmail inbox/app:
+              </div>
+              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <div>👉 <strong>Option A (Direct Gmail - Recommended):</strong> Select <strong>Direct Gmail</strong> below, enter your Gmail & 16-char App Password. Real emails deliver straight into Gmail!</div>
+                <div>👉 <strong>Option B (Mailtrap Auto-Forwarding):</strong> In your Mailtrap dashboard &rarr; Inboxes &rarr; Demo Inbox &rarr; <em>Settings &rarr; Auto Forwarding</em>, add your Gmail.</div>
+              </div>
+            </div>
+          </div>
+
           {/* Provider Selection Tabs */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#475569', marginBottom: '8px' }}>
               Select Email Sending Engine:
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setProvider(EMAIL_PROVIDERS.GMAIL)}
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  border: `2px solid ${provider === EMAIL_PROVIDERS.GMAIL ? '#EA4335' : '#E2E8F0'}`,
+                  background: provider === EMAIL_PROVIDERS.GMAIL ? '#FEF2F2' : '#FFFFFF',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                  position: 'relative'
+                }}
+              >
+                <div style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '10px',
+                  background: '#EA4335',
+                  color: '#FFFFFF',
+                  fontSize: '9.5px',
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  letterSpacing: '0.4px'
+                }}>
+                  REAL GMAIL INBOX
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <i className="fa-brands fa-google" style={{ color: '#EA4335', fontSize: '18px' }}></i>
+                  <span style={{ fontWeight: 800, fontSize: '14px', color: provider === EMAIL_PROVIDERS.GMAIL ? '#B91C1C' : '#1E293B' }}>
+                    Direct Gmail
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748B' }}>
+                  Delivers to real Gmail app
+                </div>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setProvider(EMAIL_PROVIDERS.MAILTRAP)}
@@ -242,32 +318,8 @@ export default function EmailConfigModal({ isOpen, onClose, activeDoctor, nextPa
                     Mailtrap Engine
                   </span>
                 </div>
-                <div style={{ fontSize: '11.5px', color: '#64748B' }}>
-                  Analyses and delivers queue alerts
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setProvider(EMAIL_PROVIDERS.GMAIL)}
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: '12px',
-                  border: `2px solid ${provider === EMAIL_PROVIDERS.GMAIL ? '#EA4335' : '#E2E8F0'}`,
-                  background: provider === EMAIL_PROVIDERS.GMAIL ? '#FEF2F2' : '#FFFFFF',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <i className="fa-brands fa-google" style={{ color: '#EA4335', fontSize: '18px' }}></i>
-                  <span style={{ fontWeight: 800, fontSize: '14px', color: provider === EMAIL_PROVIDERS.GMAIL ? '#B91C1C' : '#1E293B' }}>
-                    Direct Gmail (Nodemailer)
-                  </span>
-                </div>
-                <div style={{ fontSize: '11.5px', color: '#64748B' }}>
-                  Sends physical emails to real Gmail inboxes
+                <div style={{ fontSize: '11px', color: '#64748B' }}>
+                  Sandbox Testing suite
                 </div>
               </button>
             </div>

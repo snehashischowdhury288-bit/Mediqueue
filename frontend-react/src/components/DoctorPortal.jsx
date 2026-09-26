@@ -316,14 +316,14 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, user
           patientName: targetPatientName,
           email: nextPatientEmail,
           slotNumber: targetSlotNumber,
-          provider: 'Mailtrap',
+          provider: result.provider || 'Email',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          message: `Readiness alert sent to ${nextPatientEmail} via Mailtrap`
+          message: result.message || `Readiness alert sent to ${nextPatientEmail}`
         });
       } else {
         setManualAlertToast({
           type: 'error',
-          message: `Mailtrap notice: ${result.message}`
+          message: result.message || 'Failed to dispatch email'
         });
       }
     } catch (err) {

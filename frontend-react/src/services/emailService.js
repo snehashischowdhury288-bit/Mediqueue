@@ -164,11 +164,21 @@ export async function sendAutomatedPresetEmail({
     console.warn('[EmailService] Firestore queue note:', firestoreErr.message);
   }
 
-  // 2. Direct Gmail SMTP Dispatch (if Gmail mode selected or credentials present)
-  if (config.provider === EMAIL_PROVIDERS.GMAIL && config.gmailUser && config.gmailPass) {
+  // 2. Direct Gmail SMTP Dispatch (Real physical emails to Gmail app)
+  if (config.provider === EMAIL_PROVIDERS.GMAIL) {
+    if (!config.gmailUser || !config.gmailPass) {
+      return {
+        success: false,
+        provider: 'Gmail',
+        message: 'Gmail credentials not configured. Please open ⚙️ Email Settings, select "Direct Gmail (Nodemailer)", and enter your Gmail address & 16-character Google App Password.'
+      };
+    }
+
     const gmailEndpoints = [
+      '/api/gmail',
       '/api/gmail/send',
-      'http://localhost:5000/api/gmail/send'
+      'http://localhost:5000/api/gmail/send',
+      'https://mediqueue-beryl.vercel.app/api/gmail'
     ];
 
     for (const endpoint of gmailEndpoints) {
@@ -197,11 +207,27 @@ export async function sendAutomatedPresetEmail({
             recipient: patientEmail,
             data: resData
           };
+        } else {
+          const errData = await response.json().catch(() => null);
+          console.warn(`[EmailService] Gmail endpoint ${endpoint} error:`, errData);
+          if (errData?.message) {
+            return {
+              success: false,
+              provider: 'Gmail',
+              message: `Gmail error: ${errData.message}`
+            };
+          }
         }
       } catch (err) {
         console.warn(`[EmailService] Failed calling Gmail endpoint ${endpoint}:`, err.message);
       }
     }
+
+    return {
+      success: false,
+      provider: 'Gmail',
+      message: 'Unable to reach Gmail email gateway. Please verify your internet connection or Google App Password in ⚙️ Settings.'
+    };
   }
 
   // 3. Mailtrap Dispatch
@@ -239,10 +265,13 @@ export async function sendAutomatedPresetEmail({
       if (response.ok) {
         const resData = await response.json().catch(() => null);
         console.log('[EmailService] Mailtrap dispatch successful:', resData);
+        const isSandbox = resData?.mode === 'sandbox' || resData?.inboxId;
         return {
           success: true,
           provider: 'Mailtrap',
-          message: `Readiness alert sent to ${patientEmail} via Mailtrap`,
+          message: isSandbox
+            ? `Captured in Mailtrap Sandbox (Inbox #4929850). To receive physical emails in your Gmail app, select Direct Gmail (Nodemailer) in ⚙️ Settings or enable Mailtrap Auto-Forwarding.`
+            : `Readiness alert sent to ${patientEmail} via Mailtrap`,
           recipient: patientEmail,
           data: resData
         };
@@ -275,7 +304,7 @@ export async function sendAutomatedPresetEmail({
       return {
         success: true,
         provider: 'Mailtrap',
-        message: `Readiness alert sent to ${patientEmail} via Mailtrap`,
+        message: `Captured in Mailtrap Sandbox (Inbox #4929850). To receive physical emails in your Gmail app, select Direct Gmail (Nodemailer) in ⚙️ Settings or enable Mailtrap Auto-Forwarding.`,
         recipient: patientEmail,
         data: sandboxData
       };

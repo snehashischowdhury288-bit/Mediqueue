@@ -858,7 +858,7 @@ app.post('/api/demo/populate', (req, res) => {
 const MAILTRAP_TOKEN = process.env.MAILTRAP_TOKEN || 'e0003d35e29d71e96224530855a6c244';
 const MAILTRAP_SENDER = process.env.MAILTRAP_SENDER || 'mailtrap@demomailtrap.com';
 
-app.post('/api/mailtrap/send', async (req, res) => {
+app.post(['/api/mailtrap/send', '/api/mailtrap'], async (req, res) => {
   try {
     const {
       to,
@@ -1002,7 +1002,7 @@ app.post('/api/mailtrap/send', async (req, res) => {
 // =============================================================================
 // GMAIL DIRECT SMTP DISPATCH API (Nodemailer)
 // =============================================================================
-app.post('/api/gmail/send', async (req, res) => {
+app.post(['/api/gmail/send', '/api/gmail'], async (req, res) => {
   try {
     const {
       to,
