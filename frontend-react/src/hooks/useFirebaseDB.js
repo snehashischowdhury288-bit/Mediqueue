@@ -44,13 +44,14 @@ export function useFirebaseDB() {
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [analyticsLogs, setAnalyticsLogs] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [dbError, setDbError] = useState(null);
 
   // Track Firestore listener unsubs
   const unsubsRef = useRef([]);
 
   // =========================================================================
-  // 1. REAL-TIME FIRESTORE SUBSCRIPTIONS (doctors, appointments, analytics_logs)
+  // 1. REAL-TIME FIRESTORE SUBSCRIPTIONS (doctors, appointments, analytics_logs, users)
   // =========================================================================
   useEffect(() => {
     let isMounted = true;
@@ -64,6 +65,7 @@ export function useFirebaseDB() {
           if (!isMounted) return;
           const docsData = snapshot.docs.map(docSnap => ({
             id: docSnap.id,
+            doctorId: docSnap.data().doctorId || docSnap.id,
             ...docSnap.data()
           }));
           setDoctors(docsData);
@@ -109,7 +111,24 @@ export function useFirebaseDB() {
         }
       );
 
-      unsubsRef.current = [unsubDoctors, unsubAppointments, unsubLogs];
+      // 4. Users Collection Listener (for Admin overview)
+      const usersCol = collection(db, 'users');
+      const unsubUsers = onSnapshot(
+        usersCol,
+        snapshot => {
+          if (!isMounted) return;
+          const usersData = snapshot.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          }));
+          setAllUsers(usersData);
+        },
+        error => {
+          console.warn('[Firestore] Users listener fallback:', error.message);
+        }
+      );
+
+      unsubsRef.current = [unsubDoctors, unsubAppointments, unsubLogs, unsubUsers];
     } catch (err) {
       console.error('[Firestore] Initialization error:', err);
     }
@@ -156,7 +175,7 @@ export function useFirebaseDB() {
           });
         }
       } else {
-        // Fallback to local stored session if signed in via Simulated OTP
+        // Fallback to local stored session if signed in via Simulated OTP or Admin key
         const cachedUser = localStorage.getItem('mediqueue_firebase_auth_user');
         if (cachedUser) {
           try {
@@ -175,20 +194,28 @@ export function useFirebaseDB() {
   }, []);
 
   // Google Sign-In
-  const signInWithGoogle = useCallback(async (role = 'patient') => {
+  const signInWithGoogle = useCallback(async (role = 'patient', extraData = {}) => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
       const userDocRef = doc(db, 'users', fbUser.uid);
-      const profile = {
-        uid: fbUser.uid,
-        name: fbUser.displayName || 'User',
-        email: fbUser.email || '',
-        phone: fbUser.phoneNumber || '',
-        role: role,
-        createdAt: serverTimestamp()
-      };
-      await setDoc(userDocRef, profile, { merge: true });
+      const userSnap = await getDoc(userDocRef);
+      let profile;
+      if (userSnap.exists()) {
+        profile = { ...userSnap.data(), role: role, ...extraData };
+        await setDoc(userDocRef, profile, { merge: true });
+      } else {
+        profile = {
+          uid: fbUser.uid,
+          name: fbUser.displayName || 'User',
+          email: fbUser.email || '',
+          phone: fbUser.phoneNumber || '',
+          role: role,
+          createdAt: serverTimestamp(),
+          ...extraData
+        };
+        await setDoc(userDocRef, profile, { merge: true });
+      }
       localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
       setCurrentUser(profile);
       return { success: true, user: profile };
@@ -199,7 +226,7 @@ export function useFirebaseDB() {
   }, []);
 
   // Email & Password Sign-Up
-  const signUpWithEmail = useCallback(async (email, password, name, role = 'patient') => {
+  const signUpWithEmail = useCallback(async (email, password, name, role = 'patient', extraData = {}) => {
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       const fbUser = result.user;
@@ -207,9 +234,10 @@ export function useFirebaseDB() {
         uid: fbUser.uid,
         name: name || 'User',
         email: email,
-        phone: '',
+        phone: extraData.phone || '',
         role: role,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        ...extraData
       };
       await setDoc(doc(db, 'users', fbUser.uid), profile, { merge: true });
       localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
@@ -240,7 +268,7 @@ export function useFirebaseDB() {
   }, []);
 
   // Simulated OTP Authentication (preserves mock test flow with 1234)
-  const signInWithSimulatedOtp = useCallback(async (phone, otp, role = 'patient', name = '') => {
+  const signInWithSimulatedOtp = useCallback(async (phone, otp, role = 'patient', name = '', extraData = {}) => {
     if (otp !== '1234') {
       return { success: false, message: 'Invalid OTP. Please enter mock OTP 1234.' };
     }
@@ -252,7 +280,8 @@ export function useFirebaseDB() {
       name: name || (role === 'doctor' ? 'Dr. Physician' : 'Patient User'),
       email: `${cleanPhone}@phone.mediqueue.clinic`,
       role: role,
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      ...extraData
     };
 
     try {
@@ -261,6 +290,26 @@ export function useFirebaseDB() {
       console.warn('[Firestore] Set user document offline/fallback:', e);
     }
 
+    localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
+    setCurrentUser(profile);
+    return { success: true, user: profile };
+  }, []);
+
+  // Admin Master Passcode Authorization
+  const authAdminLogin = useCallback(async ({ method, name }) => {
+    const uid = `admin_${Date.now()}`;
+    const profile = {
+      uid,
+      name: name || 'Hospital Administrator',
+      email: 'admin@hospital.mediqueue.clinic',
+      role: 'admin',
+      createdAt: serverTimestamp()
+    };
+    try {
+      await setDoc(doc(db, 'users', uid), profile, { merge: true });
+    } catch (e) {
+      console.warn('[Firestore] Set admin user offline/fallback:', e);
+    }
     localStorage.setItem('mediqueue_firebase_auth_user', JSON.stringify(profile));
     setCurrentUser(profile);
     return { success: true, user: profile };
@@ -276,39 +325,41 @@ export function useFirebaseDB() {
 
   // =========================================================================
   // 3. DOCTOR REGISTRATION & ONBOARDING (doctors collection)
-  // Schema: { doctorId, doctorCode, name, department, age, batches, createdAt }
+  // Schema: { doctorId, doctorCode, name, department, age, isAvailable, batches, createdAt }
   // =========================================================================
   const registerDoctor = useCallback(async docData => {
     if (!docData.name || !docData.name.trim()) {
       throw new Error('Doctor Name is required.');
     }
-    const doctorCode = (docData.doctorCode || `DOC${Math.floor(100 + Math.random() * 900)}`).trim().toUpperCase();
+    const doctorCode = (docData.doctorCode || `DOC-${Math.floor(100 + Math.random() * 900)}`).trim().toUpperCase();
+    const docId = docData.doctorId || doc(collection(db, 'doctors')).id;
 
     const defaultBatches = [
       { batchId: 'b1', name: 'Morning', startTime: '10:00', maxSlots: 5 },
       { batchId: 'b2', name: 'Evening', startTime: '16:00', maxSlots: 5 }
     ];
 
-    const doctorDocRef = doc(collection(db, 'doctors'));
     const newDoctorRecord = {
-      doctorId: doctorDocRef.id,
+      doctorId: docId,
       doctorCode: doctorCode,
       name: docData.name.trim(),
       department: (docData.department || 'General Medicine').trim(),
       age: docData.age ? parseInt(docData.age, 10) : 42,
+      isAvailable: docData.isAvailable !== undefined ? docData.isAvailable : true,
       batches: Array.isArray(docData.batches) && docData.batches.length > 0 ? docData.batches : defaultBatches,
       createdAt: serverTimestamp()
     };
 
-    await setDoc(doctorDocRef, newDoctorRecord);
+    const doctorDocRef = doc(db, 'doctors', docId);
+    await setDoc(doctorDocRef, newDoctorRecord, { merge: true });
     return newDoctorRecord;
   }, []);
 
-  // Query doctor by code
+  // Query doctor by code or ID
   const getDoctorByCode = useCallback(code => {
     if (!code) return null;
     const clean = String(code).trim().toUpperCase();
-    return doctors.find(d => d.doctorCode?.toUpperCase() === clean || d.doctorId === code) || null;
+    return doctors.find(d => d.doctorCode?.toUpperCase() === clean || d.doctorId === code || d.id === code) || null;
   }, [doctors]);
 
   // =========================================================================
@@ -325,7 +376,7 @@ export function useFirebaseDB() {
     }
 
     const cleanCode = String(doctorCode).trim().toUpperCase();
-    const targetDoc = doctors.find(d => d.doctorCode?.toUpperCase() === cleanCode || d.doctorId === cleanCode);
+    const targetDoc = doctors.find(d => d.doctorCode?.toUpperCase() === cleanCode || d.doctorId === cleanCode || d.id === cleanCode);
 
     if (!targetDoc) {
       throw new Error(`Doctor code "${doctorCode}" was not found in registered directory.`);
@@ -333,7 +384,8 @@ export function useFirebaseDB() {
 
     // Active appointments for this doctor in Firestore
     const activeDocApts = appointments.filter(
-      a => a.doctorCode?.toUpperCase() === cleanCode && (a.status === 'waiting' || a.status === 'in_consultation')
+      a => (a.doctorId === targetDoc.doctorId || a.doctorCode?.toUpperCase() === cleanCode) &&
+           (a.status === 'waiting' || a.status === 'in_consultation')
     );
 
     const pCatLower = String(priorityCategory || 'none').toLowerCase();
@@ -383,6 +435,7 @@ export function useFirebaseDB() {
         patientPhone: patientPhone.trim(),
         patientEmail: (patientEmail || '').trim(),
         patientAge: parseInt(patientAge, 10) || 30,
+        doctorId: targetDoc.doctorId || targetDoc.id,
         doctorCode: targetDoc.doctorCode,
         department: targetDoc.department,
         batchId: targetBatchId,
@@ -442,6 +495,7 @@ export function useFirebaseDB() {
         patientPhone: patientPhone.trim(),
         patientEmail: (patientEmail || '').trim(),
         patientAge: parseInt(patientAge, 10) || 30,
+        doctorId: targetDoc.doctorId || targetDoc.id,
         doctorCode: targetDoc.doctorCode,
         department: targetDoc.department,
         batchId: targetBatchId,
@@ -462,12 +516,15 @@ export function useFirebaseDB() {
   // =========================================================================
   // 5. DOCTOR PORTAL ACTIONS (Call Next, Complete, Skip, No-Show)
   // =========================================================================
-  const callNext = useCallback(async doctorCode => {
-    if (!doctorCode) return null;
-    const cleanCode = String(doctorCode).trim().toUpperCase();
+  const callNext = useCallback(async doctorKey => {
+    if (!doctorKey) return null;
+    const cleanKey = String(doctorKey).trim().toUpperCase();
 
     const waitingForDoc = appointments
-      .filter(a => a.doctorCode?.toUpperCase() === cleanCode && a.status === 'waiting')
+      .filter(
+        a => (a.doctorId === doctorKey || a.doctorCode?.toUpperCase() === cleanKey) &&
+             a.status === 'waiting'
+      )
       .sort((a, b) => {
         if (a.batchId !== b.batchId) return a.batchId.localeCompare(b.batchId);
         return a.slotNumber - b.slotNumber;
@@ -486,12 +543,13 @@ export function useFirebaseDB() {
     return targetPatient;
   }, [appointments]);
 
-  const completeConsultation = useCallback(async doctorCode => {
-    if (!doctorCode) return null;
-    const cleanCode = String(doctorCode).trim().toUpperCase();
+  const completeConsultation = useCallback(async doctorKey => {
+    if (!doctorKey) return null;
+    const cleanKey = String(doctorKey).trim().toUpperCase();
 
     const inConsult = appointments.find(
-      a => a.doctorCode?.toUpperCase() === cleanCode && a.status === 'in_consultation'
+      a => (a.doctorId === doctorKey || a.doctorCode?.toUpperCase() === cleanKey) &&
+           a.status === 'in_consultation'
     );
 
     if (!inConsult) return null;
@@ -503,8 +561,10 @@ export function useFirebaseDB() {
     if (inConsult.consultationStartTime) {
       const startTime = inConsult.consultationStartTime.toDate
         ? inConsult.consultationStartTime.toDate()
-        : new Date(inConsult.consultationStartTime);
-      const diffMs = Date.now() - startTime.getTime();
+        : (inConsult.consultationStartTime.seconds
+            ? new Date(inConsult.consultationStartTime.seconds * 1000)
+            : new Date(inConsult.consultationStartTime));
+      const diffMs = Date.now() - (isNaN(startTime.getTime()) ? Date.now() : startTime.getTime());
       durationMinutes = Math.max(1, Math.round(diffMs / 60000)) || 8;
     }
 
@@ -520,6 +580,7 @@ export function useFirebaseDB() {
     const logRef = doc(collection(db, 'analytics_logs'));
     firestoreBatch.set(logRef, {
       appointmentId: inConsult.appointmentId || inConsult.id,
+      doctorId: inConsult.doctorId || '',
       doctorCode: inConsult.doctorCode,
       department: inConsult.department,
       durationMinutes: durationMinutes,
@@ -527,25 +588,8 @@ export function useFirebaseDB() {
       completedAt: serverTimestamp()
     });
 
-    // Promote next waiting patient if any
-    const waitingForDoc = appointments
-      .filter(a => a.doctorCode?.toUpperCase() === cleanCode && a.status === 'waiting')
-      .sort((a, b) => {
-        if (a.batchId !== b.batchId) return a.batchId.localeCompare(b.batchId);
-        return a.slotNumber - b.slotNumber;
-      });
-
-    if (waitingForDoc.length > 0) {
-      const nextPat = waitingForDoc[0];
-      const nextRef = doc(db, 'appointments', nextPat.id || nextPat.appointmentId);
-      firestoreBatch.update(nextRef, {
-        status: 'in_consultation',
-        consultationStartTime: serverTimestamp()
-      });
-    }
-
     await firestoreBatch.commit();
-    return { completed: inConsult, durationMinutes };
+    return inConsult;
   }, [appointments]);
 
   const skipPatient = useCallback(async appointmentId => {
@@ -608,6 +652,8 @@ export function useFirebaseDB() {
   // =========================================================================
   const getAdminTelemetry = useCallback(() => {
     const waitingApts = appointments.filter(a => a.status === 'waiting');
+    const inConsultApts = appointments.filter(a => a.status === 'in_consultation');
+    const completedApts = appointments.filter(a => a.status === 'completed');
     const totalQueueLength = waitingApts.length;
 
     const deptSet = new Set();
@@ -641,11 +687,15 @@ export function useFirebaseDB() {
       : 0;
 
     const doctorsSummary = doctors.map(docData => {
-      const docWaiting = waitingApts.filter(a => a.doctorCode?.toUpperCase() === docData.doctorCode?.toUpperCase());
-      const inConsult = appointments.find(
-        a => a.doctorCode?.toUpperCase() === docData.doctorCode?.toUpperCase() && a.status === 'in_consultation'
+      const docWaiting = waitingApts.filter(
+        a => a.doctorId === docData.doctorId || a.doctorCode?.toUpperCase() === docData.doctorCode?.toUpperCase()
       );
-      const docHistory = analyticsLogs.filter(h => h.doctorCode?.toUpperCase() === docData.doctorCode?.toUpperCase());
+      const inConsult = inConsultApts.find(
+        a => a.doctorId === docData.doctorId || a.doctorCode?.toUpperCase() === docData.doctorCode?.toUpperCase()
+      );
+      const docHistory = analyticsLogs.filter(
+        h => h.doctorId === docData.doctorId || h.doctorCode?.toUpperCase() === docData.doctorCode?.toUpperCase()
+      );
       const docAvgWait = docHistory.length > 0
         ? Math.round(docHistory.reduce((sum, h) => sum + (h.durationMinutes || 0), 0) / docHistory.length)
         : (overallAvgWait || 10);
@@ -658,6 +708,13 @@ export function useFirebaseDB() {
       };
     });
 
+    const registeredPatientsSummary = {
+      total: appointments.length,
+      waiting: waitingApts.length,
+      inConsultation: inConsultApts.length,
+      completed: completedApts.length
+    };
+
     const isEmpty = totalQueueLength === 0 && analyticsLogs.length === 0 && distinctDepts.length === 0;
 
     return {
@@ -665,6 +722,9 @@ export function useFirebaseDB() {
       overallAvgWait,
       departmentsSummary,
       doctorsSummary,
+      activeDoctors: doctors.filter(d => d.isAvailable !== false),
+      allPatients: appointments,
+      registeredPatientsSummary,
       isEmpty,
       emptyMessage: 'Queue length: 0 | Average Wait Time: 0 min | No active department traffic.'
     };
@@ -678,11 +738,13 @@ export function useFirebaseDB() {
     signUpWithEmail,
     signInWithEmail,
     signInWithSimulatedOtp,
+    authAdminLogin,
     signOut,
     doctors,
     appointments,
     analyticsLogs,
     analyticsHistory: analyticsLogs,
+    allUsers,
     registerDoctor,
     getDoctorByCode,
     bookAppointment,

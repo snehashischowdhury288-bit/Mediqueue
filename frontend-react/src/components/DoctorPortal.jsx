@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 
 export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOpenDoctorRegistration }) {
+  const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
   const [timerSeconds, setTimerSeconds] = useState(0);
 
   const { appointments, callNext, completeConsultation, skipPatient, markNoShow } = db;
 
-  // Filter strictly by the logged-in doctor's doctorCode where status === "waiting" or status === "in_consultation"
+  // Filter strictly by the logged-in doctor's doctorId or doctorCode
   const currentDocCode = doctor?.doctorCode?.toUpperCase() || '';
+  const currentDocId = doctor?.doctorId || doctor?.uid || '';
+
   const activeQueue = appointments
     .filter(
-      a => a.doctorCode?.toUpperCase() === currentDocCode &&
+      a => (a.doctorId === currentDocId || a.doctorCode?.toUpperCase() === currentDocCode) &&
            (a.status === 'waiting' || a.status === 'in_consultation')
     )
     .sort((a, b) => {
@@ -19,6 +22,18 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
 
   const inConsultation = activeQueue.find(a => a.status === 'in_consultation');
   const waitingPatients = activeQueue.filter(a => a.status === 'waiting');
+
+  // Cured / Completed Patients for this specific doctor
+  const completedPatients = appointments
+    .filter(
+      a => (a.doctorId === currentDocId || a.doctorCode?.toUpperCase() === currentDocCode) &&
+           a.status === 'completed'
+    )
+    .sort((a, b) => {
+      const timeA = a.consultationEndTime?.toDate ? a.consultationEndTime.toDate() : new Date(a.consultationEndTime || 0);
+      const timeB = b.consultationEndTime?.toDate ? b.consultationEndTime.toDate() : new Date(b.consultationEndTime || 0);
+      return timeB - timeA;
+    });
 
   // Stopwatch timer for active consultation
   useEffect(() => {
@@ -55,7 +70,7 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
 
   const activeBatchName = activeQueue[0]?.batchId === 'b2' ? 'Evening Batch' : 'Morning Batch';
 
-  // If no doctor selected or directory is empty
+  // If no doctor selected
   if (!doctor) {
     return (
       <main className="page-viewport">
@@ -111,12 +126,12 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
             <div className="doc-title-group">
               <div className="doc-credential-line">
                 <h1 className="doc-main-name">{doctor.name}</h1>
-                <span className="doc-active-badge font-mono">
-                  <span className="pulse-dot-green"></span> CLINIC ACTIVE
+                <span className="doc-active-badge font-mono" style={{ background: doctor.isAvailable !== false ? '#DCFCE7' : '#F1F5F9', color: doctor.isAvailable !== false ? '#15803D' : '#64748B' }}>
+                  <span className="pulse-dot-green"></span> {doctor.isAvailable !== false ? 'ON DUTY • CLINIC ACTIVE' : 'OFFLINE'}
                 </span>
               </div>
               <div className="doc-sub-line">
-                {doctor.department} • Code: <strong className="font-mono text-blue">{doctor.doctorCode}</strong> • Age {doctor.age || 42}
+                {doctor.department} • Code: <strong className="font-mono text-blue">{doctor.doctorCode}</strong> • Age/Exp: {doctor.age || 42} Yrs
               </div>
             </div>
           </div>
@@ -147,262 +162,302 @@ export default function DoctorPortal({ doctor, doctors, onSelectDoctor, db, onOp
               type="button"
               className="btn-secondary-action"
               onClick={onOpenDoctorRegistration}
-              style={{ padding: '8px 14px', fontSize: '12px' }}
+              style={{ padding: '8px 14px', fontSize: '13px' }}
             >
-              <i className="fa-solid fa-user-plus"></i> Add Doctor
+              <i className="fa-solid fa-user-plus"></i>
+              <span>New Clinician</span>
             </button>
-
-            <div className="doc-quick-stat">
-              <span className="stat-label font-mono">SCHEDULED IN QUEUE</span>
-              <span className="stat-num font-mono">{activeQueue.length}</span>
-            </div>
-            <div className="doc-quick-stat">
-              <span className="stat-label font-mono">CURRENT BATCH</span>
-              <span className="stat-num font-mono" style={{ fontSize: '15px' }}>
-                {activeBatchName}
-              </span>
-            </div>
           </div>
         </section>
 
-        {/* Active Patient In-Consultation Card with 4 Actions (Phase 3 Requirement 2) */}
-        <section className="active-consultation-section">
-          <div className="active-patient-card">
-            <div className="ap-header">
-              <div className="ap-badge-group">
-                <span className="badge-in-room font-mono">
-                  <span className="pulse-dot-green"></span> ACTIVE IN CONSULTING ROOM
-                </span>
-                <span className="badge-room-timer font-mono">
-                  <i className="fa-regular fa-clock"></i> {formatTimer(timerSeconds)}
-                </span>
-              </div>
-              <span className="ap-slot-chip font-mono">
-                {inConsultation ? `Slot ${inConsultation.slotNumber} • ${inConsultation.batchId === 'b2' ? 'Evening' : 'Morning'}` : 'Slot --'}
-              </span>
-            </div>
+        {/* Doctor Suite Tabs: Active Queue vs Cured History */}
+        <div style={{ display: 'flex', gap: '12px', margin: '24px 0 16px', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px' }}>
+          <button
+            type="button"
+            className={`btn-filter-pill ${activeTab === 'queue' ? 'active' : ''}`}
+            onClick={() => setActiveTab('queue')}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '12px',
+              fontWeight: 700,
+              fontSize: '14px',
+              background: activeTab === 'queue' ? '#3E69FE' : '#FFFFFF',
+              color: activeTab === 'queue' ? '#FFFFFF' : '#475569',
+              border: '1px solid #CBD5E1',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <i className="fa-solid fa-users-line"></i>
+            <span>Live Consultation Queue</span>
+            <span style={{ background: activeTab === 'queue' ? 'rgba(255,255,255,0.25)' : '#F1F5F9', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>
+              {activeQueue.length}
+            </span>
+          </button>
 
-            <div className="ap-body">
-              <div className="ap-avatar-circle">
-                <i className="fa-solid fa-user-injured"></i>
-              </div>
-              <div className="ap-info-col">
-                <h2 className="ap-patient-name">
-                  {inConsultation ? inConsultation.patientName : 'No Patient in Consultation'}
-                </h2>
-                <div className="ap-demographics font-mono">
-                  {inConsultation
-                    ? `Age ${inConsultation.patientAge} • Priority: ${inConsultation.priorityCategory.toUpperCase()} • Phone: ${inConsultation.patientPhone}`
-                    : 'Queue is waiting. Use Call Next to activate the next patient.'}
+          <button
+            type="button"
+            className={`btn-filter-pill ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '12px',
+              fontWeight: 700,
+              fontSize: '14px',
+              background: activeTab === 'history' ? '#10B981' : '#FFFFFF',
+              color: activeTab === 'history' ? '#FFFFFF' : '#475569',
+              border: '1px solid #CBD5E1',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <i className="fa-solid fa-circle-check"></i>
+            <span>Cured / Completed History</span>
+            <span style={{ background: activeTab === 'history' ? 'rgba(255,255,255,0.25)' : '#F1F5F9', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>
+              {completedPatients.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Tab 1: Live Consultation Suite */}
+        {activeTab === 'queue' && (
+          <>
+            {/* Consultation Suite Action Cards Grid */}
+            <section className="doctor-action-grid">
+
+              {/* Card 1: Currently In Consultation */}
+              <div className="doc-panel-card consult-active-card">
+                <div className="doc-card-header">
+                  <span className="sm-badge pulse-badge">
+                    <span className="pulse-dot-green"></span> IN-EXAMINATION
+                  </span>
+                  <span className="doc-batch-label font-mono">
+                    {inConsultation ? `Slot ${inConsultation.slotNumber} • ${activeBatchName}` : activeBatchName}
+                  </span>
+                </div>
+
+                <div className="doc-card-body">
+                  {inConsultation ? (
+                    <div className="consulting-patient-profile">
+                      <div className="patient-avatar-large">
+                        {inConsultation.patientName?.charAt(0) || 'P'}
+                      </div>
+                      <div className="patient-identity-block">
+                        <h2 className="consult-patient-name">{inConsultation.patientName}</h2>
+                        <div className="patient-tags-row">
+                          <span className="tag-detail font-mono">Age: {inConsultation.patientAge || '32'}</span>
+                          <span className="tag-detail font-mono">Phone: {inConsultation.patientPhone}</span>
+                          {inConsultation.priorityCategory && inConsultation.priorityCategory !== 'none' && (
+                            <span className="priority-badge-pill font-mono">
+                              <i className="fa-solid fa-star"></i> {inConsultation.priorityCategory.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Live Consultation Timer */}
+                      <div className="consultation-stopwatch-box">
+                        <div className="timer-label font-mono">CONSULTATION DURATION</div>
+                        <div className="timer-digits font-mono">{formatTimer(timerSeconds)}</div>
+                        <small className="timer-hint">Auto-logged to Firestore analytics</small>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="no-active-consultation-state">
+                      <div className="empty-icon-wrap">
+                        <i className="fa-solid fa-stethoscope"></i>
+                      </div>
+                      <h3>No Patient in Consultation Suite</h3>
+                      <p>Click "Call Next Patient" below to summon the highest priority patient from the waiting queue.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="doc-card-footer">
+                  {inConsultation ? (
+                    <div className="consult-actions-bar">
+                      <button
+                        type="button"
+                        className="btn-complete-consultation"
+                        onClick={() => completeConsultation(doctor.doctorId || doctor.doctorCode)}
+                        title="Mark consultation finished and log analytics"
+                      >
+                        <i className="fa-solid fa-circle-check"></i>
+                        <span>Complete (✅)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-skip-consultation"
+                        onClick={() => skipPatient(inConsultation.appointmentId || inConsultation.id)}
+                        title="Move to tail of current batch"
+                      >
+                        <i className="fa-solid fa-forward-step"></i>
+                        <span>Skip (⏭️)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-noshow-consultation"
+                        onClick={() => markNoShow(inConsultation.appointmentId || inConsultation.id)}
+                        title="Mark as absent / no show"
+                      >
+                        <i className="fa-solid fa-user-xmark"></i>
+                        <span>No-Show (❌)</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-call-next-primary"
+                      onClick={() => callNext(doctor.doctorId || doctor.doctorCode)}
+                      disabled={waitingPatients.length === 0}
+                    >
+                      <i className="fa-solid fa-bell"></i>
+                      <span>Call Next Patient ({waitingPatients.length} waiting)</span>
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Doctor 4 Control Buttons */}
-            <div className="ap-action-bar">
-              {/* 1. Call Next */}
-              <button
-                type="button"
-                className="btn-doc-control call"
-                onClick={() => {
-                  callNext(doctor.doctorCode);
-                  setTimerSeconds(0);
-                }}
-                disabled={waitingPatients.length === 0}
-                title="Activates and highlights the next patient in line"
-              >
-                <i className="fa-solid fa-bullhorn"></i>
-                <span>Call Next</span>
-              </button>
+              {/* Card 2: Next in Line Waiting Patients */}
+              <div className="doc-panel-card">
+                <div className="doc-card-header">
+                  <span className="sm-title">NEXT IN LINE (WAITING QUEUE)</span>
+                  <span className="doc-counter font-mono">{waitingPatients.length} Waiting</span>
+                </div>
 
-              {/* 2. Consultation Complete (✅) */}
-              <button
-                type="button"
-                className="btn-doc-control done"
-                onClick={() => {
-                  completeConsultation(doctor.doctorCode);
-                  setTimerSeconds(0);
-                }}
-                disabled={!inConsultation}
-                title="Marks consultation finished, calculates duration, pushes to analytics, and advances queue"
-              >
-                <i className="fa-solid fa-circle-check"></i>
-                <span>Complete (✅)</span>
-              </button>
-
-              {/* 3. Skip (⏭️) */}
-              <button
-                type="button"
-                className="btn-doc-control skip"
-                onClick={() => {
-                  if (inConsultation) {
-                    skipPatient(inConsultation.appointmentId);
-                    setTimerSeconds(0);
-                  }
-                }}
-                disabled={!inConsultation}
-                title="Moves current patient to the bottom of the batch"
-              >
-                <i className="fa-solid fa-forward-step"></i>
-                <span>Skip (⏭️)</span>
-              </button>
-
-              {/* 4. Mark No-Show (❌) */}
-              <button
-                type="button"
-                className="btn-doc-control noshow"
-                onClick={() => {
-                  if (inConsultation) {
-                    markNoShow(inConsultation.appointmentId);
-                    setTimerSeconds(0);
-                  }
-                }}
-                disabled={!inConsultation}
-                title="Flags appointment as No-Show and removes from live queue"
-              >
-                <i className="fa-solid fa-circle-xmark"></i>
-                <span>No-Show (❌)</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Doctor Queue Table with Phase 1 Requirement 3 Empty State */}
-        <section className="queue-roster-section">
-          <div className="section-header-row">
-            <div>
-              <h3 className="sec-title">Live Consulting Queue</h3>
-              <p className="sec-sub">Patients for Dr. {doctor.name} ({doctor.doctorCode}) via dynamic localStorage synchronization</p>
-            </div>
-            <span className="badge-live-stream font-mono">
-              <span className="pulse-dot-green"></span> {waitingPatients.length} WAITING
-            </span>
-          </div>
-
-          <div className="queue-table-wrapper">
-            <table className="roster-table">
-              <thead>
-                <tr>
-                  <th>SLOT / BATCH</th>
-                  <th>PATIENT NAME</th>
-                  <th>AGE</th>
-                  <th>PHONE</th>
-                  <th>PRIORITY</th>
-                  <th>STATUS</th>
-                  <th>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeQueue.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8', padding: '36px' }}>
-                      <div style={{ fontSize: '15px', fontWeight: 700, color: '#64748B' }}>
-                        No patients waiting in current batch.
-                      </div>
-                      <div style={{ fontSize: '12.5px', color: '#94A3B8', marginTop: '4px' }}>
-                        When patients book using doctor code <strong>{doctor.doctorCode}</strong>, they will instantly appear here.
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  activeQueue.map(apt => {
-                    const isConsulting = apt.status === 'in_consultation';
-                    return (
-                      <tr
-                        key={apt.appointmentId}
-                        style={isConsulting ? { backgroundColor: 'rgba(62, 105, 254, 0.05)' } : {}}
-                      >
-                        <td className="font-mono">
-                          <strong>Slot {apt.slotNumber}</strong>
-                          <br />
-                          <small style={{ color: '#64748B' }}>{apt.batchId === 'b2' ? 'Evening Batch' : 'Morning Batch'}</small>
-                        </td>
-                        <td>
-                          <strong>{apt.patientName}</strong>
-                        </td>
-                        <td>{apt.patientAge}</td>
-                        <td className="font-mono">{apt.patientPhone}</td>
-                        <td>
-                          <span className={`badge-priority ${apt.priorityCategory}`}>
-                            {apt.priorityCategory.toUpperCase()}
-                          </span>
-                        </td>
-                        <td>
-                          <span
-                            className={`badge-status ${
-                              isConsulting ? 'consulting' : apt.status === 'completed' ? 'completed' : 'waiting'
-                            }`}
-                          >
-                            {isConsulting ? 'In-Consultation' : 'WAITING'}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="doctor-row-actions">
-                            {isConsulting ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="row-mini-btn done"
-                                  onClick={() => completeConsultation(doctor.doctorCode)}
-                                  title="Complete consultation and log analytics"
-                                >
-                                  <i className="fa-solid fa-check"></i> Done (✅)
-                                </button>
-                                <button
-                                  type="button"
-                                  className="row-mini-btn skip"
-                                  onClick={() => skipPatient(apt.appointmentId)}
-                                  title="Skip to batch end"
-                                >
-                                  <i className="fa-solid fa-forward-step"></i> Skip
-                                </button>
-                                <button
-                                  type="button"
-                                  className="row-mini-btn noshow"
-                                  onClick={() => markNoShow(apt.appointmentId)}
-                                  title="Flag No-Show"
-                                >
-                                  <i className="fa-solid fa-circle-xmark"></i> No-Show
-                                </button>
-                              </>
+                <div className="doc-card-body">
+                  {waitingPatients.length === 0 ? (
+                    <div className="empty-waiting-queue">
+                      <i className="fa-regular fa-calendar-check"></i>
+                      <p>All waiting queue slots for Dr. {doctor.name} have been served or are empty.</p>
+                    </div>
+                  ) : (
+                    <div className="waiting-patient-list">
+                      {waitingPatients.map((pat, idx) => (
+                        <div key={pat.appointmentId || pat.id} className="waiting-patient-item">
+                          <div className="waiting-rank-col font-mono">
+                            <span className="rank-num">#{idx + 1}</span>
+                            <span className="slot-sub">Slot {pat.slotNumber}</span>
+                          </div>
+                          <div className="waiting-info-col">
+                            <span className="waiting-name">{pat.patientName}</span>
+                            <span className="waiting-meta font-mono">
+                              {pat.patientPhone} • Batch: {pat.batchId === 'b2' ? 'Evening' : 'Morning'}
+                            </span>
+                          </div>
+                          <div className="waiting-action-col">
+                            {pat.priorityCategory && pat.priorityCategory !== 'none' ? (
+                              <span className="priority-mini-pill font-mono">
+                                {pat.priorityCategory.toUpperCase()}
+                              </span>
                             ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  className="row-mini-btn call"
-                                  onClick={() => callNext(doctor.doctorCode)}
-                                  title="Call into consultation suite"
-                                >
-                                  <i className="fa-solid fa-bullhorn"></i> Call
-                                </button>
-                                <button
-                                  type="button"
-                                  className="row-mini-btn skip"
-                                  onClick={() => skipPatient(apt.appointmentId)}
-                                  title="Skip to batch end"
-                                >
-                                  <i className="fa-solid fa-forward-step"></i> Skip
-                                </button>
-                                <button
-                                  type="button"
-                                  className="row-mini-btn noshow"
-                                  onClick={() => markNoShow(apt.appointmentId)}
-                                  title="Flag No-Show"
-                                >
-                                  <i className="fa-solid fa-circle-xmark"></i> No-Show
-                                </button>
-                              </>
+                              <span className="standard-mini-pill font-mono">STANDARD</span>
                             )}
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="doc-card-footer">
+                  <span className="waiting-footer-note font-mono">
+                    <i className="fa-solid fa-clock-rotate-left"></i> Real-time priority shift active in Firestore
+                  </span>
+                </div>
+              </div>
+
+            </section>
+          </>
+        )}
+
+        {/* Tab 2: Cured / Completed History */}
+        {activeTab === 'history' && (
+          <section className="cured-history-section" style={{ background: '#FFFFFF', borderRadius: '20px', padding: '24px', border: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                  Completed Consultation Records
+                </h3>
+                <p style={{ fontSize: '13px', color: '#64748B', margin: '4px 0 0' }}>
+                  Patients successfully examined and treated by Dr. {doctor.name}
+                </p>
+              </div>
+              <span className="font-mono text-green" style={{ fontSize: '14px', fontWeight: 700 }}>
+                Total Cured: {completedPatients.length} Patients
+              </span>
+            </div>
+
+            {completedPatients.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94A3B8' }}>
+                <i className="fa-solid fa-file-medical" style={{ fontSize: '40px', marginBottom: '12px', display: 'block' }}></i>
+                <h4>No completed consultations logged yet today.</h4>
+                <p style={{ fontSize: '13px' }}>Mark patients as completed from the live queue to record examination history.</p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
+                  <thead>
+                    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', textAlign: 'left' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Patient Name</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Contact</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Batch & Slot</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Priority Tier</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Completed At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {completedPatients.map(pat => {
+                      const endTime = pat.consultationEndTime?.toDate
+                        ? pat.consultationEndTime.toDate().toLocaleTimeString()
+                        : 'Recently';
+                      return (
+                        <tr key={pat.appointmentId || pat.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                          <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1E293B' }}>
+                            {pat.patientName}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#64748B' }}>
+                            {pat.patientPhone || 'N/A'}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>
+                            Slot {pat.slotNumber} ({pat.batchId === 'b2' ? 'Evening' : 'Morning'})
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              background: pat.priorityCategory && pat.priorityCategory !== 'none' ? '#FEF3C7' : '#F1F5F9',
+                              color: pat.priorityCategory && pat.priorityCategory !== 'none' ? '#B45309' : '#64748B'
+                            }}>
+                              {pat.priorityCategory?.toUpperCase() || 'NONE'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{ color: '#10B981', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <i className="fa-solid fa-circle-check"></i> Completed
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#64748B', fontFamily: 'monospace' }}>
+                            {endTime}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
       </div>
     </main>

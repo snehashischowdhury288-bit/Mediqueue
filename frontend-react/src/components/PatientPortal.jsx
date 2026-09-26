@@ -14,6 +14,7 @@ export default function PatientPortal({
 }) {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [selectedService, setSelectedService] = useState('Cardiology');
   const [typedDoctorCode, setTypedDoctorCode] = useState('');
   const [codeLookupError, setCodeLookupError] = useState(null);
   const [turnAlertDismissed, setTurnAlertDismissed] = useState(false);
@@ -23,14 +24,29 @@ export default function PatientPortal({
   const [patAge, setAge] = useState(user?.age || '32');
   const [patPhone, setPhone] = useState(user?.phone || '');
   const [patEmail, setEmail] = useState(user?.email || 'patient@example.com');
-  const [priorityCategory, setPriorityCategory] = useState('Normal');
+  const [priorityCategory, setPriorityCategory] = useState(user?.priorityCategory || 'none');
 
   const { appointments, analyticsHistory } = db;
 
+  // Sync selected doctor based on department if none selected
+  useEffect(() => {
+    if (doctors && doctors.length > 0) {
+      if (!selectedDoctor) {
+        const match = doctors.find(d => d.department?.toLowerCase() === selectedService.toLowerCase()) || doctors[0];
+        onSelectDoctor(match);
+      }
+    }
+  }, [doctors, selectedDoctor, selectedService, onSelectDoctor]);
+
   // Active appointments for selected doctor
   const docCode = selectedDoctor?.doctorCode?.toUpperCase() || '';
+  const docId = selectedDoctor?.doctorId || selectedDoctor?.uid || '';
+
   const activeQueue = appointments
-    .filter(a => a.doctorCode?.toUpperCase() === docCode && (a.status === 'waiting' || a.status === 'in_consultation'))
+    .filter(
+      a => (a.doctorId === docId || a.doctorCode?.toUpperCase() === docCode) &&
+           (a.status === 'waiting' || a.status === 'in_consultation')
+    )
     .sort((a, b) => {
       if (a.batchId !== b.batchId) return a.batchId.localeCompare(b.batchId);
       return a.slotNumber - b.slotNumber;
@@ -41,11 +57,12 @@ export default function PatientPortal({
   // Find user's active appointment for this doctor or across appointments
   const currentApt = myAppointment || appointments.find(
     a => (a.status === 'waiting' || a.status === 'in_consultation') &&
-         (a.patientPhone === user?.phone || (user?.email && a.patientEmail?.toLowerCase() === user.email.toLowerCase()))
+         ((user?.phone && a.patientPhone === user.phone) ||
+          (user?.email && a.patientEmail?.toLowerCase() === user.email.toLowerCase()) ||
+          (user?.uid && a.patientId === user.uid))
   );
 
   // Calculate live queue position:
-  // "Patients Ahead = Count of waiting appointments in this batch with lower slotNumber"
   const currentBatchId = currentApt ? currentApt.batchId : 'b1';
   const batchApts = activeQueue.filter(a => a.batchId === currentBatchId);
 
@@ -56,8 +73,7 @@ export default function PatientPortal({
     : 0;
 
   // Dynamic Estimated Wait Time:
-  // "Wait Time = Patients Ahead * (Average Duration from mediqueue_analytics_history or 10 min default)"
-  const deptHistory = analyticsHistory.filter(h => h.department === selectedDoctor?.department);
+  const deptHistory = (analyticsHistory || []).filter(h => h.department === selectedDoctor?.department);
   const avgDuration = deptHistory.length > 0
     ? Math.round(deptHistory.reduce((s, h) => s + (h.durationMinutes || 0), 0) / deptHistory.length)
     : 10;
@@ -69,7 +85,6 @@ export default function PatientPortal({
 
   useEffect(() => {
     if (is3TurnsAway && !turnAlertDismissed) {
-      // Fire simulated Web3Forms notification
       fetch('https://api.web3forms.com/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -78,9 +93,7 @@ export default function PatientPortal({
           subject: 'MediQueue Turn Alert: 3 Turns Away!',
           message: `Attention ${currentApt.patientName}: You are 3 turns away from your consultation with Dr. ${selectedDoctor?.name}. Please head to the consultation suite.`
         })
-      }).catch(() => {
-        // Dispatched safely / offline fallback
-      });
+      }).catch(() => {});
     }
   }, [is3TurnsAway, turnAlertDismissed, currentApt, selectedDoctor]);
 
@@ -90,6 +103,7 @@ export default function PatientPortal({
     const found = db.getDoctorByCode(typedDoctorCode.trim());
     if (found) {
       onSelectDoctor(found);
+      setSelectedService(found.department || 'Cardiology');
       setCodeLookupError(null);
       setTypedDoctorCode('');
     } else {
@@ -102,6 +116,7 @@ export default function PatientPortal({
     if (!selectedDoctor) return;
 
     await onBookAppointment({
+      doctorId: selectedDoctor.doctorId,
       doctorCode: selectedDoctor.doctorCode,
       patientName: patName,
       patientAge: parseInt(patAge, 10),
@@ -114,17 +129,23 @@ export default function PatientPortal({
   };
 
   const qrPayload = currentApt && selectedDoctor ? {
-    appointmentId: currentApt.appointmentId,
+    appointmentId: currentApt.appointmentId || currentApt.id,
     doctorCode: selectedDoctor.doctorCode,
     slotNumber: currentApt.slotNumber,
-    patientName: currentApt.patientName
+    patientName: currentApt.patientName,
+    department: selectedDoctor.department
   } : null;
+
+  // Real doctors in Firestore matching selected service
+  const serviceDoctors = (doctors || []).filter(
+    d => d.department?.toLowerCase() === selectedService.toLowerCase()
+  );
 
   return (
     <main className="page-viewport">
       <div className="portal-main-container">
 
-        {/* Patient Hero / Greeting */}
+        {/* Patient Hero Banner */}
         <section className="patient-hero-banner">
           <div className="patient-hero-content">
             <span className="hero-kicker font-mono">
@@ -132,74 +153,160 @@ export default function PatientPortal({
             </span>
             <h1 className="pat-greeting-title">Hello, {user?.name || 'Patient'}!</h1>
             <p className="pat-greeting-sub">
-              Your consultation is registered with dynamic batch allocation & priority shift.
+              Your consultation is registered with real-time Firestore synchronization & priority allocation.
             </p>
           </div>
 
-          {/* Doctor Association & Code Validator (Phase 3 Requirement 1) */}
+          {/* Quick Doctor Code Lookup */}
           <div className="doctor-switcher-container">
-            {doctors.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="switcher-label font-mono">ATTENDING CLINICIAN:</span>
-                  <select
-                    className="doctor-switcher-select"
-                    value={selectedDoctor?.doctorCode || ''}
-                    onChange={e => {
-                      const doc = doctors.find(d => d.doctorCode === e.target.value);
-                      if (doc) onSelectDoctor(doc);
-                    }}
-                  >
-                    {doctors.map(d => (
-                      <option key={d.doctorId} value={d.doctorCode}>
-                        {d.name} ({d.department} • {d.doctorCode})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <form onSubmit={handleLookupDoctorCode} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Doctor Code (e.g. DOC-404)"
+                value={typedDoctorCode}
+                onChange={e => setTypedDoctorCode(e.target.value.toUpperCase())}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #CBD5E1',
+                  fontSize: '12.5px',
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase'
+                }}
+              />
+              <button type="submit" className="btn-secondary-action" style={{ padding: '8px 14px', fontSize: '12.5px' }}>
+                <i className="fa-solid fa-magnifying-glass"></i> Find Doctor
+              </button>
+            </form>
+            {codeLookupError && (
+              <span style={{ fontSize: '11px', color: '#EF4444', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+                {codeLookupError}
+              </span>
+            )}
+          </div>
+        </section>
 
-                {/* Direct Doctor Code Lookup */}
-                <form onSubmit={handleLookupDoctorCode} style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    placeholder="Enter Doctor Code (e.g. DOC101)"
-                    value={typedDoctorCode}
-                    onChange={e => setTypedDoctorCode(e.target.value)}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: '8px',
-                      border: '1px solid #CBD5E1',
-                      fontSize: '12px',
-                      textTransform: 'uppercase'
-                    }}
-                  />
-                  <button type="submit" className="btn-secondary-action" style={{ padding: '6px 12px', fontSize: '12px' }}>
-                    <i className="fa-solid fa-link"></i> Link
-                  </button>
-                </form>
-                {codeLookupError && (
-                  <span style={{ fontSize: '11px', color: '#EF4444', fontWeight: 600 }}>{codeLookupError}</span>
-                )}
-              </div>
-            ) : (
-              <div style={{ background: '#EFF6FF', padding: '12px 16px', borderRadius: '12px', border: '1px solid #BFDBFE' }}>
-                <span style={{ fontSize: '12.5px', color: '#1E3A8A', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                  No doctors registered in directory yet.
+        {/* 1. Real Department / Service Selection */}
+        <section style={{ margin: '20px 0 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <span className="font-mono" style={{ fontSize: '12px', fontWeight: 800, color: '#64748B', letterSpacing: '0.5px' }}>
+              SELECT CLINICAL SERVICE / DEPARTMENT:
+            </span>
+            <span style={{ fontSize: '12px', color: '#3E69FE', fontWeight: 600 }}>
+              {doctors.length} Total Clinicians Registered
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {[
+              { id: 'Cardiology', icon: 'fa-heart-pulse' },
+              { id: 'Neurology', icon: 'fa-brain' },
+              { id: 'Odontology', icon: 'fa-tooth' },
+              { id: 'General Medicine', icon: 'fa-stethoscope' },
+              { id: 'Pediatrics', icon: 'fa-baby' }
+            ].map(svc => {
+              const isSelected = selectedService === svc.id;
+              const count = (doctors || []).filter(d => d.department?.toLowerCase() === svc.id.toLowerCase()).length;
+              return (
+                <button
+                  key={svc.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedService(svc.id);
+                    const match = doctors.find(d => d.department?.toLowerCase() === svc.id.toLowerCase());
+                    if (match) onSelectDoctor(match);
+                  }}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '14px',
+                    border: isSelected ? '2px solid #3E69FE' : '1px solid #E2E8F0',
+                    background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                    color: isSelected ? '#1E40AF' : '#475569',
+                    fontWeight: 700,
+                    fontSize: '13.5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    boxShadow: isSelected ? '0 4px 12px rgba(62,105,254,0.15)' : 'none'
+                  }}
+                >
+                  <i className={`fa-solid ${svc.icon}`}></i>
+                  <span>{svc.id}</span>
+                  <span style={{
+                    fontSize: '11px',
+                    background: isSelected ? '#3E69FE' : '#F1F5F9',
+                    color: isSelected ? '#FFFFFF' : '#64748B',
+                    padding: '2px 6px',
+                    borderRadius: '8px'
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Real Doctors in Selected Department */}
+          <div style={{ marginTop: '16px', background: '#FFFFFF', padding: '16px 20px', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '10px' }}>
+              AUTHENTIC CLINICIANS IN {selectedService.toUpperCase()}:
+            </span>
+
+            {serviceDoctors.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+                <span style={{ fontSize: '13px', color: '#94A3B8' }}>
+                  No doctors currently registered under <strong>{selectedService}</strong> in Firestore.
                 </span>
                 <button
                   type="button"
-                  className="btn-primary-action"
-                  style={{ padding: '6px 14px', fontSize: '12px' }}
+                  className="btn-secondary-action"
                   onClick={onOpenDoctorRegistration}
+                  style={{ padding: '6px 14px', fontSize: '12px' }}
                 >
-                  <i className="fa-solid fa-user-plus"></i> Register a Doctor Profile
+                  <i className="fa-solid fa-user-plus"></i> Onboard Doctor
                 </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {serviceDoctors.map(doc => {
+                  const isSelected = selectedDoctor?.doctorCode === doc.doctorCode;
+                  return (
+                    <div
+                      key={doc.doctorId || doc.doctorCode}
+                      onClick={() => onSelectDoctor(doc)}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        border: isSelected ? '2px solid #3E69FE' : '1px solid #CBD5E1',
+                        background: isSelected ? '#EFF6FF' : '#F8FAFC',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#3E69FE', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                        {doc.name.charAt(0)}
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: '13.5px', color: '#1E293B', display: 'block' }}>{doc.name}</strong>
+                        <span className="font-mono text-blue" style={{ fontSize: '11.5px', fontWeight: 700 }}>
+                          Code: {doc.doctorCode} • Age {doc.age || 40}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <i className="fa-solid fa-circle-check text-blue" style={{ marginLeft: '4px' }}></i>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </section>
 
-        {/* 3-Turns-Away High-Priority In-App Alert Banner (Phase 3 Requirement 3) */}
+        {/* 3-Turns-Away Notification Banner */}
         {is3TurnsAway && !turnAlertDismissed && (
           <section className="patient-turn-alert-banner">
             <div className="alert-icon-col">
@@ -214,7 +321,7 @@ export default function PatientPortal({
               </h3>
               <p className="alert-message">
                 Your consultation with <strong>{selectedDoctor?.name}</strong> in{' '}
-                <strong>{selectedDoctor?.department} (Suite 304)</strong> is coming up shortly.
+                <strong>{selectedDoctor?.department}</strong> is coming up shortly.
               </p>
             </div>
             <button
@@ -228,7 +335,7 @@ export default function PatientPortal({
           </section>
         )}
 
-        {/* Phase 1 Requirement 3: Empty State UI When No Active Booking */}
+        {/* Empty State UI When No Active Booking */}
         {!currentApt && (
           <section
             style={{
@@ -240,17 +347,18 @@ export default function PatientPortal({
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '12px'
+              gap: '12px',
+              marginBottom: '24px'
             }}
           >
             <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: '#64748B' }}>
               <i className="fa-regular fa-calendar-xmark"></i>
             </div>
             <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1E293B' }}>
-              No active bookings found. Book an appointment above.
+              No active bookings found. Book an appointment below.
             </h3>
             <p style={{ fontSize: '13.5px', color: '#64748B', maxWidth: '440px', lineHeight: 1.5 }}>
-              Select a registered attending doctor and reserve an OPD slot with real-time dynamic batching and priority shift.
+              Select an attending doctor from <strong>{selectedService}</strong> and reserve an OPD slot with real-time priority shift.
             </p>
             {selectedDoctor ? (
               <button
@@ -259,23 +367,18 @@ export default function PatientPortal({
                 style={{ marginTop: '8px' }}
                 onClick={() => setShowBookingModal(true)}
               >
-                <i className="fa-solid fa-ticket"></i> Book Appointment with {selectedDoctor.name}
+                <i className="fa-solid fa-ticket"></i> Book Slot with {selectedDoctor.name} ({selectedDoctor.doctorCode})
               </button>
             ) : (
-              <button
-                type="button"
-                className="btn-primary-action"
-                style={{ marginTop: '8px' }}
-                onClick={onOpenDoctorRegistration}
-              >
-                <i className="fa-solid fa-user-plus"></i> Register Doctor Profile
-              </button>
+              <span style={{ fontSize: '12px', color: '#EF4444', fontWeight: 600 }}>
+                Please select or register a doctor first.
+              </span>
             )}
           </section>
         )}
 
-        {/* Live Queue Status Cards Grid */}
-        <section className="live-patient-status-grid">
+        {/* Active Consultation & Queue Metric Cards */}
+        <section className="patient-status-grid">
 
           {/* Card 1: Live Queue Position & Wait Time */}
           <div className="status-metric-card primary">
@@ -320,7 +423,7 @@ export default function PatientPortal({
                   Estimated Wait Time:{' '}
                   <strong className="font-mono text-blue">
                     {currentApt?.status === 'in_consultation'
-                      ? '0 min (In Room)'
+                      ? '0 min (In Examination Room)'
                       : `~${estWaitTimeMinutes} mins (${patientsAhead} ahead * ${avgDuration || 10}m)`}
                   </strong>
                 </span>
@@ -332,11 +435,11 @@ export default function PatientPortal({
                 {currentApt ? (
                   currentApt.status === 'in_consultation' ? (
                     <span>
-                      <i className="fa-solid fa-door-open text-green"></i> Please enter consultation room now.
+                      <i className="fa-solid fa-door-open text-green"></i> Please enter consultation suite now.
                     </span>
                   ) : (
                     <span>
-                      <i className="fa-solid fa-circle-check text-green"></i> Token active in live queue
+                      <i className="fa-solid fa-circle-check text-green"></i> Token active with Dr. {selectedDoctor?.name}
                     </span>
                   )
                 ) : (
@@ -363,7 +466,7 @@ export default function PatientPortal({
             <div className="batch-slots-visual">
               {[1, 2, 3, 4, 5].map(slot => {
                 const apt = batchApts.find(a => a.slotNumber === slot);
-                const isMe = apt && apt.appointmentId === currentApt?.appointmentId;
+                const isMe = apt && (apt.appointmentId === currentApt?.appointmentId || apt.id === currentApt?.id);
                 const isPriority = apt && ['elderly', 'pregnant', 'emergency'].includes(apt.priorityCategory);
 
                 return (
@@ -399,7 +502,7 @@ export default function PatientPortal({
                   <i className="fa-solid fa-qrcode text-blue"></i> DIGITAL TOKEN PASS
                 </span>
                 <span className="sm-batch-tag font-mono">
-                  TOKEN #{currentApt.appointmentId.slice(-6).toUpperCase()}
+                  TOKEN #{(currentApt.appointmentId || currentApt.id).slice(-6).toUpperCase()}
                 </span>
               </div>
 
@@ -441,7 +544,7 @@ export default function PatientPortal({
         <section className="queue-roster-section">
           <div className="section-header-row">
             <div>
-              <h3 className="sec-title">Current Batch Queue Roster</h3>
+              <h3 className="sec-title">Current Batch Queue Roster (Dr. {selectedDoctor?.name || 'Selected Doctor'})</h3>
               <p className="sec-sub">Live monitoring of consulting suite and queue slots</p>
             </div>
             <span className="badge-live-stream font-mono">
@@ -449,182 +552,136 @@ export default function PatientPortal({
             </span>
           </div>
 
-          <div className="queue-table-wrapper">
-            <table className="roster-table">
-              <thead>
-                <tr>
-                  <th>SLOT</th>
-                  <th>PATIENT</th>
-                  <th>AGE</th>
-                  <th>PRIORITY</th>
-                  <th>STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batchApts.length === 0 ? (
+          <div className="roster-table-container">
+            {batchApts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '36px', color: '#94A3B8' }}>
+                <p>No waiting patients registered in this batch yet.</p>
+              </div>
+            ) : (
+              <table className="roster-table">
+                <thead>
                   <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', color: '#94A3B8', padding: '24px' }}>
-                      No patients booked in this batch yet.
-                    </td>
+                    <th>Slot</th>
+                    <th>Patient Name</th>
+                    <th>Priority Category</th>
+                    <th>Status</th>
+                    <th>Batch</th>
                   </tr>
-                ) : (
-                  batchApts.map(apt => {
-                    const isMe = apt.appointmentId === currentApt?.appointmentId;
-                    const isConsulting = apt.status === 'in_consultation';
+                </thead>
+                <tbody>
+                  {batchApts.map(apt => {
+                    const isMe = apt && (apt.appointmentId === currentApt?.appointmentId || apt.id === currentApt?.id);
                     return (
-                      <tr
-                        key={apt.appointmentId}
-                        style={isMe ? { backgroundColor: 'rgba(62, 105, 254, 0.05)' } : {}}
-                      >
-                        <td className="font-mono">
-                          <strong>Slot {apt.slotNumber}</strong>
-                        </td>
+                      <tr key={apt.appointmentId || apt.id} className={isMe ? 'highlight-row' : ''}>
+                        <td className="font-mono"><strong>Slot {apt.slotNumber}</strong></td>
+                        <td>{apt.patientName} {isMe && <span className="badge-you font-mono">YOU</span>}</td>
                         <td>
-                          {isMe ? <strong>{apt.patientName} (You)</strong> : `${apt.patientName.slice(0, 2)}****`}
-                        </td>
-                        <td className="font-mono">{apt.patientAge}</td>
-                        <td>
-                          <span className={`badge-priority ${apt.priorityCategory}`}>
-                            {apt.priorityCategory.toUpperCase()}
+                          <span className={`priority-tag ${apt.priorityCategory || 'none'}`}>
+                            {apt.priorityCategory?.toUpperCase() || 'STANDARD'}
                           </span>
                         </td>
                         <td>
-                          <span
-                            className={`badge-status ${
-                              isConsulting
-                                ? 'consulting'
-                                : apt.status === 'completed'
-                                ? 'completed'
-                                : 'waiting'
-                            }`}
-                          >
-                            {isConsulting ? 'In-Consultation' : apt.status.toUpperCase()}
+                          <span className={`status-pill ${apt.status}`}>
+                            {apt.status === 'in_consultation' ? 'In Consultation' : 'Waiting'}
                           </span>
                         </td>
+                        <td className="font-mono">{apt.batchId === 'b2' ? 'Evening' : 'Morning'}</td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </section>
 
-        {/* Modal: Book Slot */}
+        {/* Booking Dialog Modal */}
         {showBookingModal && (
           <div className="modal-backdrop">
-            <div className="dialog-box" style={{ maxWidth: '520px' }}>
+            <div className="dialog-box">
               <div className="dialog-header">
                 <h3 className="dialog-title">
-                  <i className="fa-solid fa-ticket text-blue"></i> Book OPD Consultation
+                  <i className="fa-solid fa-calendar-plus text-blue"></i> Book OPD Consultation Slot
                 </h3>
-                <button
-                  type="button"
-                  className="btn-close-dialog"
-                  onClick={() => setShowBookingModal(false)}
-                >
+                <button type="button" className="btn-close-dialog" onClick={() => setShowBookingModal(false)}>
                   <i className="fa-solid fa-xmark"></i>
                 </button>
               </div>
 
               <form onSubmit={handleBookingSubmit}>
                 <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div className="doc-selection-preview selected">
-                    <div>
-                      <i className="fa-solid fa-stethoscope text-blue"></i> <strong>{selectedDoctor?.name}</strong>
-                      <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px' }}>
-                        {selectedDoctor?.department} • Code: {selectedDoctor?.doctorCode}
-                      </div>
-                    </div>
+                  <div style={{ background: '#EFF6FF', padding: '12px 14px', borderRadius: '10px', fontSize: '13px', color: '#1E40AF' }}>
+                    <i className="fa-solid fa-user-doctor"></i> Attending Clinician:{' '}
+                    <strong>{selectedDoctor?.name}</strong> ({selectedDoctor?.department} • Code: {selectedDoctor?.doctorCode})
                   </div>
 
-                  <div className="form-row-2">
+                  <div className="form-group">
+                    <label>Patient Full Name *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={patName}
+                      onChange={e => setPatName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div className="form-group">
-                      <label>Patient Full Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={patName}
-                        onChange={e => setPatName(e.target.value)}
-                        placeholder="e.g. Elena Rostova"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Age *</label>
+                      <label>Age</label>
                       <input
                         type="number"
-                        min="1"
-                        max="120"
-                        required
+                        className="form-input"
                         value={patAge}
                         onChange={e => setAge(e.target.value)}
+                        required
                       />
                     </div>
-                  </div>
 
-                  <div className="form-row-2">
                     <div className="form-group">
-                      <label>Phone Number *</label>
-                      <input
-                        type="tel"
-                        required
-                        value={patPhone}
-                        onChange={e => setPhone(e.target.value)}
-                        placeholder="10-digit number"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Email (for 3-Away Alert) *</label>
-                      <input
-                        type="email"
-                        required
-                        value={patEmail}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="patient@example.com"
-                      />
+                      <label>Priority Tier *</label>
+                      <select
+                        className="form-input"
+                        value={priorityCategory}
+                        onChange={e => setPriorityCategory(e.target.value)}
+                      >
+                        <option value="none">None (Standard Queue)</option>
+                        <option value="elderly">Elderly (60+ Years)</option>
+                        <option value="pregnant">Pregnant Woman</option>
+                        <option value="emergency">Emergency Case</option>
+                      </select>
                     </div>
                   </div>
 
                   <div className="form-group">
-                    <label>Priority Category *</label>
-                    <div className="priority-options-grid compact" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                      {['Normal', 'Elderly', 'Pregnant Woman', 'Emergency'].map(cat => (
-                        <label
-                          key={cat}
-                          className={`priority-radio-card ${priorityCategory === cat ? 'active' : ''}`}
-                          onClick={() => setPriorityCategory(cat)}
-                        >
-                          <input
-                            type="radio"
-                            name="category"
-                            checked={priorityCategory === cat}
-                            onChange={() => setPriorityCategory(cat)}
-                          />
-                          <div className={`pr-icon ${cat.toLowerCase().replace(' ', '')}`}>
-                            <i className="fa-solid fa-hospital-user"></i>
-                          </div>
-                          <div className="pr-text">
-                            <span className="pr-title">{cat}</span>
-                            <span className="pr-desc">
-                              {cat === 'Normal' ? 'Standard 5/batch' : 'Slot 1 priority shift'}
-                            </span>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
+                    <label>Mobile Number *</label>
+                    <input
+                      type="tel"
+                      className="form-input"
+                      value={patPhone}
+                      onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+                      maxLength={10}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Email Address</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={patEmail}
+                      onChange={e => setEmail(e.target.value)}
+                    />
                   </div>
                 </div>
 
-                <div className="dialog-footer">
-                  <button
-                    type="button"
-                    className="btn-secondary-action"
-                    onClick={() => setShowBookingModal(false)}
-                  >
+                <div className="dialog-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '16px 20px' }}>
+                  <button type="button" className="btn-secondary-action" onClick={() => setShowBookingModal(false)}>
                     Cancel
                   </button>
                   <button type="submit" className="btn-primary-action">
-                    <i className="fa-solid fa-ticket"></i> Confirm Appointment Token
+                    <i className="fa-solid fa-check"></i> Confirm Reservation
                   </button>
                 </div>
               </form>
@@ -632,11 +689,12 @@ export default function PatientPortal({
           </div>
         )}
 
-        {/* Modal: Full Token Pass */}
+        {/* Digital Token Modal */}
         {showTokenModal && currentApt && selectedDoctor && (
           <DigitalTokenModal
             appointment={currentApt}
             doctor={selectedDoctor}
+            qrPayload={qrPayload}
             onClose={() => setShowTokenModal(false)}
           />
         )}
